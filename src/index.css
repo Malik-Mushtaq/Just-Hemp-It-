@@ -1,0 +1,152 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 40 33% 96%;
+    --foreground: 30 20% 15%;
+
+    --card: 40 30% 98%;
+    --card-foreground: 30 20% 15%;
+
+    --popover: 40 30% 98%;
+    --popover-foreground: 30 20% 15%;
+
+    --primary: 90 30% 28%;
+    --primary-foreground: 40 33% 96%;
+
+    --secondary: 45 25% 88%;
+    --secondary-foreground: 30 20% 15%;
+
+    --muted: 40 20% 92%;
+    --muted-foreground: 30 10% 45%;
+
+    --accent: 80 25% 38%;
+    --accent-foreground: 40 33% 96%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 40 20% 85%;
+    --input: 40 20% 85%;
+    --ring: 90 30% 28%;
+
+    --radius: 0.75rem;
+
+    --olive: 82 30% 22%;
+    --olive-foreground: 40 33% 96%;
+    --beige: 40 33% 94%;
+    --brown: 30 30% 25%;
+    --green-light: 90 25% 45%;
+    --green-dark: 90 35% 18%;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 30 20% 8%;
+    --foreground: 40 33% 96%;
+    --card: 30 20% 10%;
+    --card-foreground: 40 33% 96%;
+    --popover: 30 20% 10%;
+    --popover-foreground: 40 33% 96%;
+    --primary: 90 30% 45%;
+    --primary-foreground: 30 20% 8%;
+    --secondary: 30 15% 18%;
+    --secondary-foreground: 40 33% 96%;
+    --muted: 30 15% 18%;
+    --muted-foreground: 40 15% 60%;
+    --accent: 80 25% 38%;
+    --accent-foreground: 40 33% 96%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 30 15% 20%;
+    --input: 30 15% 20%;
+    --ring: 90 30% 45%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+}
+
+@layer utilities {
+  .marquee {
+    animation: marquee 25s linear infinite;
+  }
+
+  /* Keep Trust Payments wallet widgets (including Google Pay) visually aligned with checkout card UI. */
+  #st-form {
+    width: 100%;
+  }
+
+  #st-form > * {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  #st-form iframe,
+  #st-form button,
+  #st-form [role="button"],
+  #st-form [class*="wallet"],
+  #st-form [class*="google"],
+  #st-form [id*="google"] {
+    max-width: 100% !important;
+  }
+
+  #st-form [class*="wallet"],
+  #st-form [class*="google"],
+  #st-form [id*="google"] {
+    border-radius: 0.75rem;
+    overflow: hidden;
+  }
+
+  @keyframes marquee {
+    0% {
+      transform: translateX(0%);
+    }
+    100% {
+      transform: translateX(-50%);
+    }
+  }
+
+  /* Hide scrollbars */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Stagger animation delays */
+  .stagger-1 {
+    animation-delay: 0.1s;
+  }
+  .stagger-2 {
+    animation-delay: 0.2s;
+  }
+  .stagger-3 {
+    animation-delay: 0.3s;
+  }
+  .stagger-4 {
+    animation-delay: 0.4s;
+  }
+  .stagger-5 {
+    animation-delay: 0.5s;
+  }
+}
