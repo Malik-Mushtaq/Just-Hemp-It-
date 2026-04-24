@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/select";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "@/hooks/use-toast";
-import { signUp } from "@/lib/api/auth";
+import { signUp, signUpWholesaler } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
@@ -113,21 +113,15 @@ const wholesaleSchema = z
       .trim()
       .min(1, "Legal business name is required")
       .max(100, "Legal business name must not exceed 100 characters"),
-    dbaName: z.string().trim().min(1, "DBA name is required").max(100),
+    dbaName: z.string().trim().max(100).optional().or(z.literal("")),
     address1: z.string().trim().min(1, "Address 1 is required").max(120),
     address2: z.string().trim().optional(),
-    lga: z.string().trim().min(1, "LGA is required"),
+    country: z.string().trim().min(1, "Country is required"),
     state: z.string().trim().min(1, "State is required"),
     city: z.string().trim().min(1, "City is required"),
     zipCode: z.string().trim().min(1, "ZIP code is required"),
     howDidYouHear: z.string().trim().optional(),
     salesRep: z.string().trim().optional(),
-    password: z
-      .string()
-      .min(6, "Password must be between 6 and 30 characters")
-      .max(30, "Password must be between 6 and 30 characters")
-      .regex(noHtmlPattern, "HTML tags are not allowed"),
-    confirmPassword: z.string().min(1, "Please confirm your password"),
     agreeBound: z.boolean().refine((value) => value, {
       message: "You must agree before continuing",
     }),
@@ -137,10 +131,6 @@ const wholesaleSchema = z
     agreeTerms: z.boolean().refine((value) => value, {
       message: "Terms and privacy policy agreement is required",
     }),
-  })
-  .refine((values) => values.password === values.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
   });
 
 type RetailerFormValues = z.infer<typeof retailerSchema>;
@@ -152,6 +142,17 @@ const apiFieldToFormField: Record<string, keyof RetailerFormValues | keyof Whole
   last_name: "lastName",
   email: "email",
   password: "password",
+  phone: "phoneNumber",
+  business_name: "legalBusinessName",
+  dba_name: "dbaName",
+  address1: "address1",
+  address2: "address2",
+  country: "country",
+  state: "state",
+  city: "city",
+  zip: "zipCode",
+  hear_about: "howDidYouHear",
+  refer_by: "salesRep",
 };
 
 const getInputClassName = (hasError: boolean, withTrailingIcon = false) =>
@@ -262,6 +263,7 @@ const SignUp = () => {
   const content = signUpContent[variant];
   const [showPassword, setShowPassword] = useState(false);
   const [uploadNames, setUploadNames] = useState<Record<string, string>>({});
+  const [uploadFiles, setUploadFiles] = useState<Record<string, File | null>>({});
 
   const redirectPath = useMemo(() => {
     const state = location.state as { from?: string } | undefined;
@@ -302,50 +304,52 @@ const SignUp = () => {
       dbaName: "",
       address1: "",
       address2: "",
-      lga: "",
+      country: "",
       state: "",
       city: "",
       zipCode: "",
       howDidYouHear: "",
       salesRep: "",
-      password: "",
-      confirmPassword: "",
       agreeBound: false,
       agreeBusiness: false,
       agreeTerms: false,
     },
   });
 
-  const signUpMutation = useMutation({
+  const retailerSignUpMutation = useMutation({
     mutationFn: signUp,
+  });
+
+  const wholesaleSignUpMutation = useMutation({
+    mutationFn: signUpWholesaler,
   });
 
   const handleUploadChange =
     (key: string) => (event: ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
+      setUploadFiles((previous) => ({
+        ...previous,
+        [key]: file || null,
+      }));
       setUploadNames((previous) => ({
         ...previous,
         [key]: file?.name || "",
       }));
     };
 
-  const submitAccount = async ({
+  const submitRetailerAccount = async ({
     firstName,
     lastName,
     email,
+    phoneNumber,
     password,
-  }: {
-    firstName: string;
-    lastName: string;
-    email: string;
-    password: string;
-  }) => {
-    const response = await signUpMutation.mutateAsync({
+  }: RetailerFormValues) => {
+    const response = await retailerSignUpMutation.mutateAsync({
       first_name: firstName.trim(),
       last_name: lastName.trim(),
       email: email.trim().toLowerCase(),
-      password,
-      role: "user",
+      password: password || "",
+      phone: phoneNumber.trim(),
     });
 
     toast({
@@ -358,10 +362,10 @@ const SignUp = () => {
 
   const retailerOnSubmit = retailerForm.handleSubmit(async (values) => {
     retailerForm.clearErrors();
-    signUpMutation.reset();
+    retailerSignUpMutation.reset();
 
     try {
-      await submitAccount(values);
+      await submitRetailerAccount(values);
       retailerForm.reset();
     } catch (error) {
       if (error instanceof ApiError) {
@@ -395,12 +399,61 @@ const SignUp = () => {
 
   const wholesaleOnSubmit = wholesaleForm.handleSubmit(async (values) => {
     wholesaleForm.clearErrors();
-    signUpMutation.reset();
+    wholesaleSignUpMutation.reset();
+
+    const requiredFiles = {
+      salesTax: uploadFiles.salesTax,
+      federalEin: uploadFiles.federalEin,
+      businessLicense: uploadFiles.businessLicense,
+      voidCheque: uploadFiles.voidCheque,
+      stateResale: uploadFiles.stateResale,
+    };
+
+    const missingFiles = Object.entries(requiredFiles)
+      .filter(([, file]) => !file)
+      .map(([key]) => uploadFields.find((field) => field.key === key)?.label || key);
+
+    if (missingFiles.length) {
+      toast({
+        title: "Missing documents",
+        description: `Please upload: ${missingFiles.join(", ")}.`,
+        variant: "destructive",
+      });
+      return;
+    }
 
     try {
-      await submitAccount(values);
+      const response = await wholesaleSignUpMutation.mutateAsync({
+        first_name: values.firstName.trim(),
+        last_name: values.lastName.trim(),
+        email: values.email.trim().toLowerCase(),
+        phone: values.phoneNumber.trim(),
+        business_name: values.legalBusinessName.trim(),
+        dba_name: values.dbaName.trim() || undefined,
+        address1: values.address1.trim(),
+        address2: values.address2.trim() || undefined,
+        country: values.country.trim(),
+        state: values.state.trim(),
+        city: values.city.trim(),
+        zip: values.zipCode.trim(),
+        hear_about: values.howDidYouHear.trim() || undefined,
+        refer_by: values.salesRep.trim() || undefined,
+        sales_tax_certificate: requiredFiles.salesTax as File,
+        fein: requiredFiles.federalEin as File,
+        license: requiredFiles.businessLicense as File,
+        void_cheque: requiredFiles.voidCheque as File,
+        state_id: requiredFiles.stateResale as File,
+      });
+
+      toast({
+        title: "Application submitted",
+        description: response.message,
+      });
+
       wholesaleForm.reset();
+      setUploadFiles({});
       setUploadNames({});
+      navigate(content.loginPath);
     } catch (error) {
       if (error instanceof ApiError) {
         Object.entries(error.fieldErrors).forEach(([field, message]) => {
@@ -438,14 +491,14 @@ const SignUp = () => {
     } = retailerForm;
 
     const showGlobalError =
-      signUpMutation.isError &&
+      retailerSignUpMutation.isError &&
       !(
-        signUpMutation.error instanceof ApiError &&
-        Object.keys(signUpMutation.error.fieldErrors).length
+        retailerSignUpMutation.error instanceof ApiError &&
+        Object.keys(retailerSignUpMutation.error.fieldErrors).length
       );
     const globalErrorMessage =
-      signUpMutation.error instanceof ApiError
-        ? signUpMutation.error.message
+      retailerSignUpMutation.error instanceof ApiError
+        ? retailerSignUpMutation.error.message
         : "Unable to create your account right now. Please try again.";
 
     return (
@@ -643,9 +696,9 @@ const SignUp = () => {
             <Button
               type="submit"
               className="h-12 w-full min-w-0 rounded-2xl bg-[#6b8440] px-4 text-base font-semibold text-white shadow-[0_20px_45px_-28px_rgba(107,132,64,0.9)] hover:bg-[#61783a]"
-              disabled={signUpMutation.isPending}
+              disabled={retailerSignUpMutation.isPending}
             >
-              {signUpMutation.isPending
+              {retailerSignUpMutation.isPending
                 ? "Creating Account..."
                 : content.submitLabel}
             </Button>
@@ -677,14 +730,14 @@ const SignUp = () => {
   } = wholesaleForm;
 
   const showGlobalError =
-    signUpMutation.isError &&
+    wholesaleSignUpMutation.isError &&
     !(
-      signUpMutation.error instanceof ApiError &&
-      Object.keys(signUpMutation.error.fieldErrors).length
+      wholesaleSignUpMutation.error instanceof ApiError &&
+      Object.keys(wholesaleSignUpMutation.error.fieldErrors).length
     );
   const globalErrorMessage =
-    signUpMutation.error instanceof ApiError
-      ? signUpMutation.error.message
+    wholesaleSignUpMutation.error instanceof ApiError
+      ? wholesaleSignUpMutation.error.message
       : "Unable to create your account right now. Please try again.";
 
   return (
@@ -834,16 +887,16 @@ const SignUp = () => {
                       </div>
                       <div>
                         <Input
-                          {...register("lga")}
-                          placeholder="LGA"
+                          {...register("country")}
+                          placeholder="Country *"
                           className={cn(
                             wholesaleFieldClassName,
-                            errors.lga && "border-destructive",
+                            errors.country && "border-destructive",
                           )}
                         />
-                        {errors.lga ? (
+                        {errors.country ? (
                           <p className="mt-1 text-[10px] text-destructive">
-                            {errors.lga.message}
+                            {errors.country.message}
                           </p>
                         ) : null}
                       </div>
@@ -986,64 +1039,6 @@ const SignUp = () => {
                   </section>
 
                   <section>
-                    <h2 className={wholesaleSectionTitleClassName}>Security</h2>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <div>
-                        <div className="relative">
-                          <Lock className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8d775f]" />
-                          <Input
-                            {...register("password")}
-                            type={showPassword ? "text" : "password"}
-                            placeholder="Password *"
-                            className={cn(
-                              wholesaleFieldClassName,
-                              "pl-9 pr-9",
-                              errors.password && "border-destructive",
-                            )}
-                          />
-                          <button
-                            type="button"
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8d775f]"
-                            onClick={() => setShowPassword((previous) => !previous)}
-                            aria-label={showPassword ? "Hide password" : "Show password"}
-                          >
-                            {showPassword ? (
-                              <EyeOff className="h-3.5 w-3.5" />
-                            ) : (
-                              <Eye className="h-3.5 w-3.5" />
-                            )}
-                          </button>
-                        </div>
-                        {errors.password ? (
-                          <p className="mt-1 text-[10px] text-destructive">
-                            {errors.password.message}
-                          </p>
-                        ) : null}
-                      </div>
-                      <div>
-                        <div className="relative">
-                          <Lock className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8d775f]" />
-                          <Input
-                            {...register("confirmPassword")}
-                            type={showPassword ? "text" : "password"}
-                            placeholder="Confirm Password *"
-                            className={cn(
-                              wholesaleFieldClassName,
-                              "pl-9",
-                              errors.confirmPassword && "border-destructive",
-                            )}
-                          />
-                        </div>
-                        {errors.confirmPassword ? (
-                          <p className="mt-1 text-[10px] text-destructive">
-                            {errors.confirmPassword.message}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                  </section>
-
-                  <section>
                     <h2 className={wholesaleSectionTitleClassName}>Agreements</h2>
                     <div className="space-y-2 text-[10px] text-[#7b6850]">
                       <label className="flex items-start gap-2">
@@ -1121,9 +1116,9 @@ const SignUp = () => {
                     <Button
                       type="submit"
                       className="h-9 min-w-[114px] rounded-[8px] bg-[#6b8440] px-8 text-[12px] font-semibold text-white hover:bg-[#61783a]"
-                      disabled={signUpMutation.isPending}
+                      disabled={wholesaleSignUpMutation.isPending}
                     >
-                      {signUpMutation.isPending ? "Signing Up..." : content.submitLabel}
+                      {wholesaleSignUpMutation.isPending ? "Signing Up..." : content.submitLabel}
                     </Button>
                     <p className="mt-2 text-center text-[9px] text-[#9a876d]">
                       Already have an account?{" "}

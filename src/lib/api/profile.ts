@@ -11,10 +11,14 @@ export interface UpdateProfilePayload {
   postcode?: string;
   city?: string;
   country?: string;
+  state?: string;
+  address1?: string;
+  address2?: string;
+  zip?: string;
 }
 
 export interface AuthUser {
-  id: number;
+  id: string | number;
   first_name: string;
   last_name: string;
   email: string;
@@ -23,6 +27,7 @@ export interface AuthUser {
   street1nr?: string;
   postcode?: string;
   city?: string;
+  state?: string;
   country?: string;
   full_address?: string;
   latitude?: number;
@@ -34,6 +39,40 @@ export interface AuthUser {
   created_at?: string;
   updated_at?: string;
 }
+
+type ShippingAddress = {
+  line1?: string | null;
+  line2?: string | null;
+  address1?: string | null;
+  address2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  postal_code?: string | null;
+  zip?: string | null;
+  full_address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  w3w_words?: string | null;
+};
+
+type ProfileEnvelopeUser = {
+  id?: string | number;
+  first_name?: string;
+  last_name?: string | null;
+  email?: string;
+  phone?: string | null;
+  role?: string;
+  created_at?: string;
+  updated_at?: string | null;
+};
+
+type ProfileEnvelope = {
+  message?: string;
+  data?: ProfileEnvelopeUser & {
+    shipping_address?: ShippingAddress;
+  };
+};
 
 export interface GetUserProfileResponse {
   user: AuthUser;
@@ -53,6 +92,45 @@ export interface ChangePasswordPayload {
 export interface ChangePasswordResponse {
   msg: string;
 }
+
+const normalizeProfileUser = (
+  user?: ProfileEnvelope["data"],
+): AuthUser => {
+  const shipping = user?.shipping_address;
+
+  return {
+    id: user?.id ?? "",
+    first_name: user?.first_name || "",
+    last_name: user?.last_name || "",
+    email: user?.email || "",
+    phone: user?.phone || "",
+    street1: shipping?.address1 || shipping?.line1 || "",
+    street1nr: "",
+    postcode: shipping?.zip || shipping?.postal_code || "",
+    city: shipping?.city || "",
+    state: shipping?.state || "",
+    country: shipping?.country || "",
+    full_address: shipping?.full_address || "",
+    latitude: shipping?.latitude ?? undefined,
+    longitude: shipping?.longitude ?? undefined,
+    w3w_address: shipping?.w3w_words || "",
+    role: user?.role || "retailer",
+    created_at: user?.created_at,
+    updated_at: user?.updated_at || undefined,
+  };
+};
+
+const toProfileUpdateRequest = (payload: UpdateProfilePayload) => ({
+  first_name: payload.first_name,
+  last_name: payload.last_name,
+  phone: payload.phone,
+  address1: payload.address1 ?? payload.street1,
+  address2: payload.address2 ?? payload.street1Nr,
+  city: payload.city,
+  state: payload.state,
+  country: payload.country,
+  zip: payload.zip ?? payload.postcode,
+});
 
 export const formatProfileDateForInput = (value?: string | null) => {
   if (!value) {
@@ -74,22 +152,36 @@ export const formatProfileDateForInput = (value?: string | null) => {
   return parsedDate.toISOString().slice(0, 10);
 };
 
-export const updateProfile = (payload: UpdateProfilePayload) =>
-  apiRequest<UpdateProfileResponse>("/user/update-profile", {
+export const updateProfile = async (payload: UpdateProfilePayload) => {
+  const response = await apiRequest<ProfileEnvelope>("/api/user/update-profile", {
     method: "PATCH",
-    body: payload,
+    body: toProfileUpdateRequest(payload),
   });
 
-export const getUserProfile = (userId?: number) =>
-  apiRequest<GetUserProfileResponse>(
-    userId ? `/user/profile?id=${userId}` : "/user/profile",
-    {
-      method: "GET",
-    },
-  );
+  return {
+    message: response.message || "Profile updated successfully.",
+    user: normalizeProfileUser(response.data),
+  };
+};
 
-export const changePassword = (payload: ChangePasswordPayload) =>
-  apiRequest<ChangePasswordResponse>("/user/change-password", {
+export const getUserProfile = async (_userId?: number | string) => {
+  const response = await apiRequest<ProfileEnvelope>("/api/user/profile", {
+    method: "GET",
+  });
+
+  return {
+    user: normalizeProfileUser(response.data),
+    cached: false,
+  };
+};
+
+export const changePassword = async (payload: ChangePasswordPayload) => {
+  const response = await apiRequest<{ message?: string }>("/api/user/change-password", {
     method: "POST",
     body: payload,
   });
+
+  return {
+    msg: response.message || "Password changed successfully.",
+  };
+};

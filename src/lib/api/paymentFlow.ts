@@ -2,10 +2,11 @@ import { API_BASE_URL } from "@/lib/api/client";
 
 export interface InitPaymentSessionResponse {
   success?: boolean;
-  paymentSessionId?: string;
-  processPath?: string;
+  payment_session_id?: string;
+  payment_method?: string;
+  process_path?: string;
   jwt?: string;
-  expiresAt?: string;
+  expires_at?: string;
   message?: string;
 }
 

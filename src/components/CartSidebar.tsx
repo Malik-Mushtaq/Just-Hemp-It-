@@ -2,7 +2,7 @@ import { X, Minus, Plus, Trash2, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/context/CartContext";
 import { Link } from "react-router-dom";
-import { formatGBP } from "@/lib/currency";
+import { formatGBP, formatGBPFromUnknown } from "@/lib/currency";
 
 const CartSidebar = () => {
   const {
@@ -92,7 +92,10 @@ const CartSidebar = () => {
                   </p>
                 ) : null}
                 <p className="text-sm font-bold">
-                  {formatGBP(item.price * item.quantity)}
+                  {formatGBPFromUnknown(
+                    item.subtotal ||
+                      (Number(item.price) || 0) * (Number(item.quantity) || 0),
+                  )}
                 </p>
 
                 <div className="flex items-center justify-between">

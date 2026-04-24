@@ -44,15 +44,17 @@ const getKnownStockLimit = (value: unknown) => {
     : null;
 };
 
-const toPositiveInteger = (value: unknown) => {
-  const numericValue = Number(value);
-
-  if (!Number.isFinite(numericValue)) {
-    return null;
+const toEntityId = (value: unknown) => {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized.length ? normalized : null;
   }
 
-  const integerValue = Math.trunc(numericValue);
-  return integerValue > 0 ? integerValue : null;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  return null;
 };
 
 const toNonNegativeInteger = (value: unknown) => {
@@ -230,8 +232,8 @@ const CartPage = () => {
   ) =>
     items
       .map((item) => {
-        const productId = toPositiveInteger(item.product_id);
-        const variationId = toPositiveInteger(item.variation_id);
+        const productId = toEntityId(item.product_id);
+        const variationId = toEntityId(item.variation_id);
         const resolvedQuantity = quantityResolver
           ? quantityResolver(item)
           : Number(item.quantity);
@@ -251,15 +253,15 @@ const CartPage = () => {
         (
           item,
         ): item is {
-          product_id: number;
-          variation_id: number;
+          product_id: string | number;
+          variation_id: string | number;
           quantity: number;
         } => item !== null,
       );
 
   const handleUpdateQuantity = (
-    productId: number,
-    variationId: number,
+    productId: string | number,
+    variationId: string | number,
     currentQuantity: number,
     change: number,
   ) => {

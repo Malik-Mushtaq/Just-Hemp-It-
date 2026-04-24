@@ -36,6 +36,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getPricingAudience } from "@/lib/authAudience";
 import { ApiError } from "@/lib/api/client";
 import {
+  getProductById,
   getProducts,
   getProductDefaultVariation,
   getMinimumOrderQuantity,
@@ -102,6 +103,9 @@ const isActiveProduct = (status: string | boolean | undefined) => {
 const toTabValue = (label: string) =>
   label.toLowerCase().replace(/&/g, "and").replace(/\s+/g, "-");
 
+const UUID_LIKE_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const ProductDetail = () => {
   const { id } = useParams();
   const { addItem, addItems, isUpdating } = useCart();
@@ -111,14 +115,22 @@ const ProductDetail = () => {
   const queryClient = useQueryClient();
 
   const [variationQuantities, setVariationQuantities] = useState<
-    Record<number, number>
+    Record<string, number>
   >({});
   const [selectedImage, setSelectedImage] = useState(0);
   const [showSticky, setShowSticky] = useState(false);
   const [reviewsPage, setReviewsPage] = useState(1);
-  const [selectedVariationId, setSelectedVariationId] = useState<number | null>(
-    null,
-  );
+  const [selectedVariationId, setSelectedVariationId] = useState<
+    string | number | null
+  >(null);
+  const shouldFetchProductDetail = Boolean(id && UUID_LIKE_PATTERN.test(id));
+
+  const productDetailQuery = useQuery({
+    queryKey: ["product-detail", id],
+    queryFn: () => getProductById(id!),
+    enabled: shouldFetchProductDetail,
+    retry: 1,
+  });
 
   const productsQuery = useQuery({
     queryKey: ["products", "detail-lookup", PRODUCT_LOOKUP_LIMIT],
@@ -131,6 +143,10 @@ const ProductDetail = () => {
   });
 
   const product = useMemo(() => {
+    if (productDetailQuery.data) {
+      return productDetailQuery.data;
+    }
+
     if (!id) {
       return null;
     }
@@ -146,7 +162,7 @@ const ProductDetail = () => {
     }
 
     return products.find((item) => toSlug(item.product_name) === id) || null;
-  }, [id, productsQuery.data?.products]);
+  }, [id, productDetailQuery.data, productsQuery.data?.products]);
 
   const relatedProducts = useMemo(() => {
     const products = productsQuery.data?.products || [];
@@ -307,7 +323,7 @@ const ProductDetail = () => {
     });
   });
 
-  if (productsQuery.isLoading) {
+  if (productDetailQuery.isLoading || (!shouldFetchProductDetail && productsQuery.isLoading)) {
     return (
       <PageTransition>
         <div className="min-h-screen bg-background">
@@ -324,7 +340,7 @@ const ProductDetail = () => {
     );
   }
 
-  if (productsQuery.isError) {
+  if (productDetailQuery.isError || (!shouldFetchProductDetail && productsQuery.isError)) {
     return (
       <PageTransition>
         <div className="min-h-screen bg-background">
@@ -335,6 +351,8 @@ const ProductDetail = () => {
               <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-5 text-destructive text-sm">
                 {productsQuery.error instanceof ApiError
                   ? productsQuery.error.message
+                  : productDetailQuery.error instanceof ApiError
+                    ? productDetailQuery.error.message
                   : "Unable to load product details right now."}
                 <div className="mt-4">
                   <Button
@@ -393,19 +411,17 @@ const ProductDetail = () => {
   const displayPrice = selectedVariation
     ? getVariationEffectivePrice(selectedVariation, pricingAudience)
     : parseAmount(
-        pricingAudience === "wholesaler"
-          ? product.discount_price ?? product.price
-          : product.price,
+        product.discount_price ?? product.price,
       );
   const originalPrice = selectedVariation
     ? parseAmount(selectedVariation.price)
     : parseAmount(product.price);
-  const hasDiscount = pricingAudience === "wholesaler" && (selectedVariation
+  const hasDiscount = selectedVariation
     ? selectedVariation.discounted_price !== null &&
       displayPrice < originalPrice
     : product.discount_price !== null &&
       product.discount_price !== undefined &&
-      displayPrice < originalPrice);
+      displayPrice < originalPrice;
   const productRating = normalizeRating(product.avg_rating);
   const productMinimumOrderQuantity = getProductMinimumOrderQuantity(product);
   const selectedVariationMinimumOrderQuantity = selectedVariation
@@ -436,31 +452,32 @@ const ProductDetail = () => {
     : "Add to Cart";
 
   const updateVariationQuantity = (
-    variationId: number,
+    variationId: string | number,
     nextQuantity: number,
     stockLimit: number | null,
   ) => {
     setVariationQuantities((current) => {
+      const variationKey = String(variationId);
       const boundedByStock =
         stockLimit !== null ? Math.min(nextQuantity, stockLimit) : nextQuantity;
       const normalized = Math.max(0, Math.min(999, Math.trunc(boundedByStock)));
 
       if (normalized <= 0) {
-        if (!(variationId in current)) {
+        if (!(variationKey in current)) {
           return current;
         }
 
-        const { [variationId]: _, ...rest } = current;
+        const { [variationKey]: _, ...rest } = current;
         return rest;
       }
 
-      if (current[variationId] === normalized) {
+      if (current[variationKey] === normalized) {
         return current;
       }
 
       return {
         ...current,
-        [variationId]: normalized,
+        [variationKey]: normalized,
       };
     });
   };

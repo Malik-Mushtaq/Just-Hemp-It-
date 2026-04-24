@@ -1,10 +1,10 @@
-import { apiRequest } from "@/lib/api/client";
+import { apiRequest, getApiAudience } from "@/lib/api/client";
 
 export type ProductSortPrice = "asc" | "desc";
 export type ProductPricingMode = "retailer" | "wholesaler";
 
 export interface ProductVariation {
-  variation_id: number;
+  variation_id: string | number;
   variation_name: string;
   price: number;
   discounted_price: number | null;
@@ -19,7 +19,7 @@ export interface ProductVariation {
 
 export interface ProductReview {
   review_id: number;
-  product_id: number;
+  product_id: string | number;
   user_id: number;
   user_name: string;
   rating: number;
@@ -29,7 +29,7 @@ export interface ProductReview {
 }
 
 export interface ProductItem {
-  id: number;
+  id: string | number;
   slug: string;
   product_name: string;
   price: number;
@@ -56,7 +56,7 @@ export interface ProductItem {
 export interface GetProductsParams {
   page?: number;
   limit?: number;
-  category_id?: number;
+  category_id?: string | number;
   price_min?: number;
   price_max?: number;
   rating_min?: number;
@@ -84,23 +84,175 @@ export interface SearchProductsResponse extends GetProductsResponse {
   q: string;
 }
 
+type ProductVariantApi = {
+  id?: number | string;
+  variant_id?: number | string;
+  variation_id?: number | string;
+  title?: string;
+  name?: string;
+  variation_name?: string;
+  price?: number;
+  original_price?: number | null;
+  compare_at_price?: number | null;
+  discounted_price?: number | null;
+  stock?: number;
+  available_stock?: number | null;
+  min_order_qty_retail?: number | null;
+  min_order_qty_wholesale?: number | null;
+  min_order_value_wholesale?: number | null;
+};
+
+type ProductApi = {
+  id?: number | string;
+  slug?: string;
+  title?: string;
+  name?: string;
+  description?: string | null;
+  short_description?: string | null;
+  image?: string | null;
+  main_image_url?: string | null;
+  support_images?: string[] | null;
+  status?: string | null;
+  category?: string | null;
+  category_name?: string | null;
+  price?: number;
+  original_price?: number | null;
+  compare_at_price?: number | null;
+  discounted_price?: number | null;
+  discount_percentage?: number | null;
+  min_order_qty_retail?: number | null;
+  min_order_qty_wholesale?: number | null;
+  min_order_value_wholesale?: number | null;
+  variants?: ProductVariantApi[];
+  audience?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+type ProductsApiResponse = {
+  data?: ProductApi[];
+  totalProducts?: number;
+  totalPages?: number;
+  currentPage?: number;
+  perPage?: number;
+};
+
+type ProductDetailApiResponse = ProductApi;
+
 const parseAmount = (value: unknown) => {
   const numericValue = Number(value);
   return Number.isFinite(numericValue) ? numericValue : 0;
 };
 
-const toRecord = (value: unknown): Record<string, unknown> | null =>
-  typeof value === "object" && value !== null
-    ? (value as Record<string, unknown>)
-    : null;
+const parseEntityId = (value: unknown, fallback: string | number) => {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized.length ? normalized : fallback;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  return fallback;
+};
+
+const toSlug = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "");
+
+const normalizeVariation = (
+  variation: ProductVariantApi,
+  index: number,
+  baseProduct: ProductApi,
+): ProductVariation => {
+  const minimumOrderQuantity =
+    variation.min_order_qty_wholesale ??
+    variation.min_order_qty_retail ??
+    baseProduct.min_order_qty_wholesale ??
+    baseProduct.min_order_qty_retail ??
+    1;
+
+  return {
+    variation_id: parseEntityId(
+      variation.variation_id ?? variation.variant_id ?? variation.id,
+      index + 1,
+    ),
+    variation_name:
+      variation.variation_name || variation.title || variation.name || "Default",
+    price: parseAmount(
+      variation.original_price ??
+        variation.compare_at_price ??
+        variation.price ??
+        baseProduct.original_price ??
+        baseProduct.compare_at_price ??
+        baseProduct.price,
+    ),
+    discounted_price: parseAmount(
+      variation.discounted_price ??
+        baseProduct.discounted_price ??
+        variation.price ??
+        baseProduct.price,
+    ),
+    minimum_order_quantity: minimumOrderQuantity,
+    min_order_quantity: minimumOrderQuantity,
+    moq: minimumOrderQuantity,
+    stock: parseAmount(variation.available_stock ?? variation.stock),
+    available_stock: variation.available_stock ?? variation.stock ?? 0,
+  };
+};
+
+const normalizeProduct = (product: ProductApi, index: number): ProductItem => {
+  const productName = product.title || product.name || "Product";
+  const variations = (product.variants || []).map((variation, variationIndex) =>
+    normalizeVariation(variation, variationIndex, product),
+  );
+  const primaryVariation = variations[0];
+  const minimumOrderQuantity =
+    product.min_order_qty_wholesale ??
+    product.min_order_qty_retail ??
+    primaryVariation?.minimum_order_quantity ??
+    1;
+
+  return {
+    id: parseEntityId(product.id, index + 1),
+    slug: product.slug || toSlug(productName),
+    product_name: productName,
+    price: parseAmount(
+      primaryVariation?.price ??
+        product.original_price ??
+        product.compare_at_price ??
+        product.price,
+    ),
+    minimum_order_quantity: minimumOrderQuantity,
+    min_order_quantity: minimumOrderQuantity,
+    moq: minimumOrderQuantity,
+    discount_percentage: parseAmount(product.discount_percentage),
+    discount_price: parseAmount(product.discounted_price),
+    sold_count: 0,
+    description: product.description || product.short_description || null,
+    category_id: 0,
+    category_name: product.category_name || product.category || null,
+    status: product.status || "active",
+    main_img: product.image || product.main_image_url || null,
+    support_imgs: product.support_images || [],
+    avg_rating: 0,
+    main_variation_name: primaryVariation?.variation_name || null,
+    variations,
+    reviews: [],
+    created_at: product.created_at,
+    updated_at: product.updated_at,
+  };
+};
 
 export const getMinimumOrderQuantity = (value: unknown) => {
-  const source = toRecord(value);
-
-  if (!source) {
+  if (!value || typeof value !== "object") {
     return 1;
   }
 
+  const source = value as Record<string, unknown>;
   const candidates = [
     source.minimum_order_quantity,
     source.min_order_quantity,
@@ -124,9 +276,7 @@ export const getVariationEffectivePrice = (
   variation: ProductVariation,
   mode: ProductPricingMode = "wholesaler",
 ) =>
-  mode === "wholesaler"
-    ? parseAmount(variation.discounted_price ?? variation.price)
-    : parseAmount(variation.price);
+  parseAmount(variation.discounted_price ?? variation.price);
 
 export const getProductDefaultVariation = (product: ProductItem) => {
   if (!product.variations?.length) {
@@ -157,7 +307,7 @@ export const getProductDisplayPrice = (
   }
 
   return parseAmount(
-    mode === "wholesaler" ? product.discount_price ?? product.price : product.price,
+    product.discount_price ?? product.price,
   );
 };
 
@@ -211,17 +361,14 @@ export const getProductPricingSummary = (
   const currentPrice = defaultVariation
     ? getVariationEffectivePrice(defaultVariation, mode)
     : parseAmount(
-        mode === "wholesaler"
-          ? product.discount_price ?? product.price
-          : product.price,
+        product.discount_price ?? product.price,
       );
   const originalPrice = defaultVariation
     ? parseAmount(defaultVariation.price)
     : parseAmount(product.price);
   const range = getProductPriceRange(product, mode);
   const hasRange = range.min < range.max;
-  const hasDiscount =
-    mode === "wholesaler" && currentPrice < originalPrice;
+  const hasDiscount = currentPrice < originalPrice;
 
   return {
     currentPrice,
@@ -244,7 +391,8 @@ const setSearchParam = (
   params.set(key, String(value));
 };
 
-export const getProducts = (params: GetProductsParams = {}) => {
+export const getProducts = async (params: GetProductsParams = {}) => {
+  const isWholesaler = getApiAudience() === "wholesaler";
   const searchParams = new URLSearchParams();
 
   setSearchParam(searchParams, "page", params.page);
@@ -258,35 +406,91 @@ export const getProducts = (params: GetProductsParams = {}) => {
   setSearchParam(searchParams, "best_seller", params.best_seller);
 
   const query = searchParams.toString();
-
-  return apiRequest<GetProductsResponse>(
-    query ? `/product/all?${query}` : "/product/all",
+  const response = await apiRequest<ProductsApiResponse>(
+    isWholesaler
+      ? query
+        ? `/api/wholesaler/products?${query}`
+        : "/api/wholesaler/products"
+      : query
+        ? `/api/product/all?${query}`
+        : "/api/product/all",
     {
       method: "GET",
-      token: null,
+      token: isWholesaler ? undefined : null,
     },
   );
+
+  return {
+    message: "Products loaded successfully.",
+    page: response.currentPage ?? params.page ?? 1,
+    limit: response.perPage ?? params.limit ?? response.data?.length ?? 0,
+    total_products: response.totalProducts ?? response.data?.length ?? 0,
+    total_pages: response.totalPages ?? 1,
+    products: (response.data || []).map(normalizeProduct),
+  };
 };
 
-export const searchProducts = ({ q, page, limit }: SearchProductsParams) => {
+export const searchProducts = async ({ q, page, limit }: SearchProductsParams) => {
+  const result = await getProducts({ page, limit });
+  const normalizedQuery = q.trim().toLowerCase();
+  const products = result.products.filter((product) => {
+    const haystack = [
+      product.product_name,
+      product.description,
+      product.category_name,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  });
+
+  return {
+    ...result,
+    q,
+    total_products: products.length,
+    total_pages: 1,
+    products,
+  };
+};
+
+export const getProductById = async (id: string | number) =>
+  normalizeProduct(
+    await apiRequest<ProductDetailApiResponse>(
+      getApiAudience() === "wholesaler"
+        ? `/api/wholesaler/product/${encodeURIComponent(String(id))}`
+        : `/api/product/${encodeURIComponent(String(id))}`,
+      {
+        method: "GET",
+        token: getApiAudience() === "wholesaler" ? undefined : null,
+      },
+    ),
+    0,
+  );
+
+export const getWholesalerProducts = async (params: GetProductsParams = {}) => {
   const searchParams = new URLSearchParams();
-  const normalizedQuery = q.trim();
 
-  searchParams.set("q", normalizedQuery);
+  setSearchParam(searchParams, "page", params.page);
+  setSearchParam(searchParams, "limit", params.limit);
 
-  if (page && page > 0) {
-    searchParams.set("page", String(page));
-  }
-
-  if (limit && limit > 0) {
-    searchParams.set("limit", String(limit));
-  }
-
-  return apiRequest<SearchProductsResponse>(
-    `/search/products?${searchParams.toString()}`,
+  const query = searchParams.toString();
+  const response = await apiRequest<ProductsApiResponse>(
+    query
+      ? `/api/wholesaler/products?${query}`
+      : "/api/wholesaler/products",
     {
       method: "GET",
-      token: null,
     },
   );
+
+  return {
+    message: "Products loaded successfully.",
+    page: response.currentPage ?? params.page ?? 1,
+    limit: response.perPage ?? params.limit ?? response.data?.length ?? 0,
+    total_products: response.totalProducts ?? response.data?.length ?? 0,
+    total_pages: response.totalPages ?? 1,
+    products: (response.data || []).map(normalizeProduct),
+  };
 };

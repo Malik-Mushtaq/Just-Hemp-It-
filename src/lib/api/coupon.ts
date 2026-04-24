@@ -6,8 +6,10 @@ export interface ApplyCouponItem {
 }
 
 export interface ApplyCouponPayload {
-  items: ApplyCouponItem[];
-  coupon_code: string;
+  items?: ApplyCouponItem[];
+  coupon_code?: string;
+  code?: string;
+  subtotal?: number;
 }
 
 export interface ApplyCouponData {
@@ -22,11 +24,21 @@ export interface ApplyCouponResponse {
   message?: string;
   msg?: string;
   error?: string;
+  coupon?: {
+    id?: string;
+    code?: string;
+    discount_type?: string;
+  };
+  discount_amount?: number;
+  final_subtotal?: number;
   data?: ApplyCouponData;
 }
 
 export const applyCoupon = (payload: ApplyCouponPayload) =>
-  apiRequest<ApplyCouponResponse>("/coupons/apply", {
+  apiRequest<ApplyCouponResponse>("/api/coupons/apply", {
     method: "POST",
-    body: payload,
+    body: {
+      code: payload.code ?? payload.coupon_code,
+      subtotal: payload.subtotal ?? 0,
+    },
   });

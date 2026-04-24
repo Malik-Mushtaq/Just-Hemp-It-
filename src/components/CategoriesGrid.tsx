@@ -8,6 +8,7 @@ import { useCart } from "@/context/CartContext";
 import { getPricingAudience } from "@/lib/authAudience";
 import { getCategories } from "@/lib/api/category";
 import {
+  getProductById,
   getProducts,
   getProductDefaultVariation,
   getProductMinimumOrderQuantity,
@@ -34,15 +35,24 @@ const toSlug = (name: string) =>
     .replace(/\s+/g, "-")
     .replace(/[^a-z0-9-]/g, "");
 
+const getProductPath = (product: { id: string | number; product_name: string }) =>
+  `/product/${encodeURIComponent(String(product.id || toSlug(product.product_name)))}`;
+
+const getCategoryBrowsePath = (categoryName: string) =>
+  `/products?category=${encodeURIComponent(categoryName)}`;
+
 const CategoriesGrid = () => {
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
-    null,
-  );
+  const [selectedCategoryId, setSelectedCategoryId] = useState<
+    string | number | null
+  >(null);
   const sliderRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   const { addItem, isUpdating } = useCart();
   const pricingAudience = getPricingAudience(user);
+  const [quickAddProductId, setQuickAddProductId] = useState<string | number | null>(
+    null,
+  );
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
 
@@ -102,7 +112,7 @@ const CategoriesGrid = () => {
     }
   };
 
-  const handleCategoryClick = (categoryId: number) => {
+  const handleCategoryClick = (categoryId: string | number) => {
     setSelectedCategoryId((previousCategoryId) =>
       previousCategoryId === categoryId ? null : categoryId,
     );
@@ -180,11 +190,26 @@ const CategoriesGrid = () => {
             className="mt-8 animate-in fade-in slide-in-from-top-4 duration-400"
           >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">
-                {selectedCategory.category_name}
-              </h3>
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold">
+                  {selectedCategory.category_name}
+                </h3>
+                {selectedCategory.subcategories?.length ? (
+                  <div className="flex flex-wrap gap-2">
+                    {selectedCategory.subcategories.map((subcategory) => (
+                      <Link
+                        key={subcategory.id}
+                        to={getCategoryBrowsePath(subcategory.name)}
+                        className="rounded-full border border-border/70 bg-background px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                      >
+                        {subcategory.name}
+                      </Link>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
               <Link
-                to={`/products?category=${encodeURIComponent(selectedCategory.category_name)}`}
+                to={getCategoryBrowsePath(selectedCategory.category_name)}
               >
                 <Button
                   variant="outline"
@@ -262,15 +287,16 @@ const CategoriesGrid = () => {
                         pricingAudience,
                       );
                       const canQuickAdd =
-                        !!defaultVariation &&
-                        parseFloat(String(defaultVariation.stock ?? 0)) > 0;
+                        (defaultVariation &&
+                          parseFloat(String(defaultVariation.stock ?? 0)) > 0) ||
+                        Boolean(product.id);
 
                       return (
                         <div
                           key={product.id}
                           className="snap-start shrink-0 w-[220px] bg-card rounded-xl border shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 overflow-hidden"
                         >
-                          <Link to={`/product/${toSlug(product.product_name)}`}>
+                          <Link to={getProductPath(product)}>
                             <div className="h-36 bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center overflow-hidden">
                               {product.main_img ? (
                                 <img
@@ -286,9 +312,7 @@ const CategoriesGrid = () => {
                             </div>
                           </Link>
                           <div className="p-3 space-y-1.5">
-                            <Link
-                              to={`/product/${toSlug(product.product_name)}`}
-                            >
+                            <Link to={getProductPath(product)}>
                               <h4 className="font-semibold text-xs truncate hover:text-primary transition-colors">
                                 {product.product_name}
                               </h4>
@@ -332,14 +356,41 @@ const CategoriesGrid = () => {
                                 className="rounded-full gap-1 text-[10px] h-7 px-2"
                                 disabled={isUpdating || !canQuickAdd}
                                 onClick={() => {
-                                  if (!defaultVariation) {
-                                    return;
-                                  }
+                                  const addFromResolvedProduct = async () => {
+                                    if (defaultVariation) {
+                                      addItem(product.id, defaultVariation.variation_id);
+                                      return;
+                                    }
 
-                                  addItem(
-                                    product.id,
-                                    defaultVariation.variation_id,
-                                  );
+                                    if (!product.id) {
+                                      return;
+                                    }
+
+                                    setQuickAddProductId(product.id);
+
+                                    try {
+                                      const detailedProduct = await getProductById(product.id);
+                                      const resolvedVariation =
+                                        getProductDefaultVariation(detailedProduct);
+
+                                      if (!resolvedVariation) {
+                                        throw new Error(
+                                          "This product has no purchasable variants.",
+                                        );
+                                      }
+
+                                      addItem(
+                                        detailedProduct.id,
+                                        resolvedVariation.variation_id,
+                                      );
+                                    } catch (error) {
+                                      console.error(error);
+                                    } finally {
+                                      setQuickAddProductId(null);
+                                    }
+                                  };
+
+                                  void addFromResolvedProduct();
                                 }}
                               >
                                 {/* <ShoppingCart className="h-3 w-3" /> Add */}
@@ -349,7 +400,9 @@ const CategoriesGrid = () => {
                                   aria-hidden="true"
                                   className="h-3 w-3"
                                 />
-                                <span>Add</span>
+                                <span>
+                                  {quickAddProductId === product.id ? "Adding..." : "Add"}
+                                </span>
                               </Button>
                             </div>
                           </div>

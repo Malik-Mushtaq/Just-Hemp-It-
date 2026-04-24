@@ -31,7 +31,14 @@ type NavItem = {
   label: string;
   href: string;
   isRoute?: boolean;
-  children?: string[];
+  children?: Array<{
+    label: string;
+    href: string;
+    children?: Array<{
+      label: string;
+      href: string;
+    }>;
+  }>;
 };
 
 const navLinks: NavItem[] = [
@@ -62,10 +69,13 @@ const toProductSlug = (name: string) =>
     .replace(/[^a-z0-9-]/g, "");
 
 const getProductDetailPath = (product: ProductItem) =>
-  `/product/${toProductSlug(product.product_name)}`;
+  `/product/${encodeURIComponent(String(product.id || toProductSlug(product.product_name)))}`;
 
 const getBlogDetailPath = (blog: BlogItem) =>
   `/blog/${encodeURIComponent(blog.slug)}`;
+
+const getCategoryPath = (categoryName: string) =>
+  `/products?category=${encodeURIComponent(categoryName)}`;
 
 const getAccountDisplayName = (
   user:
@@ -169,7 +179,15 @@ const Navbar = () => {
     if (link.label === "Categories") {
       return {
         ...link,
-        children: categoriesData?.categories?.map((c) => c.category_name) ?? [],
+        children:
+          categoriesData?.categories?.map((category) => ({
+            label: category.category_name,
+            href: getCategoryPath(category.category_name),
+            children: (category.subcategories || []).map((subcategory) => ({
+              label: subcategory.name,
+              href: getCategoryPath(subcategory.name),
+            })),
+          })) ?? [],
       };
     }
 
@@ -401,13 +419,27 @@ const Navbar = () => {
         <div className="absolute top-full left-0 pt-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
           <div className="bg-card border rounded-md shadow-lg p-3 min-w-[180px] grid gap-0.5">
             {link.children.map((cat) => (
-              <Link
-                key={cat}
-                to={`/products?category=${encodeURIComponent(cat)}`}
-                className="text-xs py-1.5 px-3 rounded hover:bg-muted transition-colors"
-              >
-                {cat}
-              </Link>
+              <div key={cat.label} className="grid gap-1">
+                <Link
+                  to={cat.href}
+                  className="text-xs py-1.5 px-3 rounded font-medium hover:bg-muted transition-colors"
+                >
+                  {cat.label}
+                </Link>
+                {cat.children?.length ? (
+                  <div className="grid gap-0.5 pl-2">
+                    {cat.children.map((subcategory) => (
+                      <Link
+                        key={subcategory.label}
+                        to={subcategory.href}
+                        className="text-[11px] py-1 px-3 rounded text-muted-foreground hover:bg-muted transition-colors"
+                      >
+                        {subcategory.label}
+                      </Link>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             ))}
           </div>
         </div>
@@ -698,14 +730,29 @@ const Navbar = () => {
                       {link.children && link.children.length > 0 ? (
                         <div className="mt-1 space-y-1 pl-4">
                           {link.children.map((cat) => (
-                            <Link
-                              key={cat}
-                              to={`/products?category=${encodeURIComponent(cat)}`}
-                              className="block rounded-full px-4 py-2 text-sm text-[#8a7d6c] transition-colors hover:bg-[#f1ebdf]"
-                              onClick={() => setMobileOpen(false)}
-                            >
-                              {cat}
-                            </Link>
+                            <div key={cat.label} className="space-y-1">
+                              <Link
+                                to={cat.href}
+                                className="block rounded-full px-4 py-2 text-sm font-medium text-[#7a6d5d] transition-colors hover:bg-[#f1ebdf]"
+                                onClick={() => setMobileOpen(false)}
+                              >
+                                {cat.label}
+                              </Link>
+                              {cat.children?.length ? (
+                                <div className="space-y-1 pl-4">
+                                  {cat.children.map((subcategory) => (
+                                    <Link
+                                      key={subcategory.label}
+                                      to={subcategory.href}
+                                      className="block rounded-full px-4 py-2 text-sm text-[#8a7d6c] transition-colors hover:bg-[#f1ebdf]"
+                                      onClick={() => setMobileOpen(false)}
+                                    >
+                                      {subcategory.label}
+                                    </Link>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
                           ))}
                         </div>
                       ) : null}

@@ -24,6 +24,7 @@ import { getPricingAudience } from "@/lib/authAudience";
 import { ApiError } from "@/lib/api/client";
 import { getCategories } from "@/lib/api/category";
 import {
+  getProductById,
   getProducts,
   getProductDefaultVariation,
   getProductMinimumOrderQuantity,
@@ -50,6 +51,9 @@ const toSlug = (name: string) =>
     .replace(/\s+/g, "-")
     .replace(/[^a-z0-9-]/g, "");
 
+const getProductPath = (product: { id: string | number; product_name: string }) =>
+  `/product/${encodeURIComponent(String(product.id || toSlug(product.product_name)))}`;
+
 const formatPrice = (price: number) => formatGBP(price);
 
 const isActiveProduct = (status: string | boolean | undefined) => {
@@ -64,6 +68,35 @@ const isActiveProduct = (status: string | boolean | undefined) => {
   return true;
 };
 
+const getCategoryLabelById = (
+  categories: Array<{
+    id: string | number;
+    category_name: string;
+    subcategories?: Array<{ id: string | number; name: string }>;
+  }>,
+  categoryId: string | number | null,
+) => {
+  if (categoryId === null) {
+    return null;
+  }
+
+  for (const category of categories) {
+    if (category.id === categoryId) {
+      return category.category_name;
+    }
+
+    const matchedSubcategory = category.subcategories?.find(
+      (subcategory) => subcategory.id === categoryId,
+    );
+
+    if (matchedSubcategory) {
+      return matchedSubcategory.name;
+    }
+  }
+
+  return null;
+};
+
 const Products = () => {
   const { user } = useAuth();
   const { addItem, isUpdating } = useCart();
@@ -73,9 +106,9 @@ const Products = () => {
   const searchQuery = (searchParams.get("q") || "").trim();
   const isSearchMode = Boolean(searchQuery);
 
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
-    null,
-  );
+  const [selectedCategoryId, setSelectedCategoryId] = useState<
+    string | number | null
+  >(null);
   const [priceRange, setPriceRange] = useState<number[]>([
     MIN_PRICE,
     MAX_PRICE,
@@ -84,6 +117,9 @@ const Products = () => {
   const [sortBy, setSortBy] = useState("newest");
   const [currentPage, setCurrentPage] = useState(1);
   const [mobileFilters, setMobileFilters] = useState(false);
+  const [quickAddProductId, setQuickAddProductId] = useState<string | number | null>(
+    null,
+  );
 
   const categoriesQuery = useQuery({
     queryKey: ["categories"],
@@ -98,14 +134,23 @@ const Products = () => {
       return;
     }
 
-    const matchedCategory = categories.find(
-      (category) =>
-        category.category_name.toLowerCase() ===
-        preselectedCategoryName.toLowerCase(),
-    );
+    const normalizedCategoryName = preselectedCategoryName.toLowerCase();
+    const matchedCategory = categories.find((category) => {
+      if (category.category_name.toLowerCase() === normalizedCategoryName) {
+        return true;
+      }
+
+      return (category.subcategories || []).some(
+        (subcategory) => subcategory.name.toLowerCase() === normalizedCategoryName,
+      );
+    });
 
     if (matchedCategory) {
-      setSelectedCategoryId(matchedCategory.id);
+      const matchedSubcategory = (matchedCategory.subcategories || []).find(
+        (subcategory) => subcategory.name.toLowerCase() === normalizedCategoryName,
+      );
+
+      setSelectedCategoryId(matchedSubcategory?.id ?? matchedCategory.id);
     }
   }, [categories, preselectedCategoryName]);
 
@@ -165,13 +210,11 @@ const Products = () => {
       : "Unable to load products right now.";
 
   const selectedCategoryName = useMemo(
-    () =>
-      categories.find((category) => category.id === selectedCategoryId)
-        ?.category_name || null,
+    () => getCategoryLabelById(categories, selectedCategoryId),
     [categories, selectedCategoryId],
   );
 
-  const toggleCategory = (categoryId: number) => {
+  const toggleCategory = (categoryId: string | number) => {
     setSelectedCategoryId((previousCategoryId) =>
       previousCategoryId === categoryId ? null : categoryId,
     );
@@ -201,16 +244,31 @@ const Products = () => {
         ) : (
           <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
             {categories.map((category) => (
-              <label
-                key={category.id}
-                className="flex items-center gap-2 cursor-pointer text-sm"
-              >
-                <Checkbox
-                  checked={selectedCategoryId === category.id}
-                  onCheckedChange={() => toggleCategory(category.id)}
-                />
-                {category.category_name}
-              </label>
+              <div key={category.id} className="space-y-1.5">
+                <label className="flex items-center gap-2 cursor-pointer text-sm font-medium">
+                  <Checkbox
+                    checked={selectedCategoryId === category.id}
+                    onCheckedChange={() => toggleCategory(category.id)}
+                  />
+                  {category.category_name}
+                </label>
+                {category.subcategories?.length ? (
+                  <div className="space-y-1 pl-6">
+                    {category.subcategories.map((subcategory) => (
+                      <label
+                        key={subcategory.id}
+                        className="flex items-center gap-2 cursor-pointer text-sm text-muted-foreground"
+                      >
+                        <Checkbox
+                          checked={selectedCategoryId === subcategory.id}
+                          onCheckedChange={() => toggleCategory(subcategory.id)}
+                        />
+                        {subcategory.name}
+                      </label>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             ))}
           </div>
         )}
@@ -414,8 +472,11 @@ const Products = () => {
                     const variationCount = product.variations?.length || 0;
                     const canQuickAdd =
                       isActive &&
-                      !!defaultVariation &&
-                      parseFloat(String(defaultVariation.stock ?? 0)) > 0;
+                      ((
+                        defaultVariation &&
+                        parseFloat(String(defaultVariation.stock ?? 0)) > 0
+                      ) ||
+                        Boolean(product.id));
 
                     return (
                       <motion.div
@@ -425,7 +486,7 @@ const Products = () => {
                         transition={{ duration: 0.3, delay: index * 0.03 }}
                         className="bg-card rounded-xl border shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300 overflow-hidden group"
                       >
-                        <Link to={`/product/${toSlug(product.product_name)}`}>
+                        <Link to={getProductPath(product)}>
                           <div className="h-44 bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center overflow-hidden">
                             {product.main_img ? (
                               <img
@@ -441,7 +502,7 @@ const Products = () => {
                           </div>
                         </Link>
                         <div className="p-3 space-y-1.5">
-                          <Link to={`/product/${toSlug(product.product_name)}`}>
+                          <Link to={getProductPath(product)}>
                             <h3 className="font-semibold text-xs truncate hover:text-primary transition-colors">
                               {product.product_name}
                             </h3>
@@ -492,14 +553,38 @@ const Products = () => {
                               className="rounded-full gap-1 text-[10px] h-7 px-2"
                               disabled={!canQuickAdd || isUpdating}
                               onClick={() => {
-                                if (!defaultVariation) {
-                                  return;
-                                }
+                                const addFromResolvedProduct = async () => {
+                                  if (defaultVariation) {
+                                    addItem(product.id, defaultVariation.variation_id);
+                                    return;
+                                  }
 
-                                addItem(
-                                  product.id,
-                                  defaultVariation.variation_id,
-                                );
+                                  if (!product.id) {
+                                    return;
+                                  }
+
+                                  setQuickAddProductId(product.id);
+
+                                  try {
+                                    const detailedProduct = await getProductById(product.id);
+                                    const resolvedVariation =
+                                      getProductDefaultVariation(detailedProduct);
+
+                                    if (!resolvedVariation) {
+                                      throw new Error(
+                                        "This product has no purchasable variants.",
+                                      );
+                                    }
+
+                                    addItem(detailedProduct.id, resolvedVariation.variation_id);
+                                  } catch (error) {
+                                    console.error(error);
+                                  } finally {
+                                    setQuickAddProductId(null);
+                                  }
+                                };
+
+                                void addFromResolvedProduct();
                               }}
                             >
                               {/* <ShoppingCart className="h-3 w-3" /> Add */}
@@ -509,7 +594,9 @@ const Products = () => {
                                 aria-hidden="true"
                                 className="h-3 w-3"
                               />
-                              <span>Add</span>
+                              <span>
+                                {quickAddProductId === product.id ? "Adding..." : "Add"}
+                              </span>
                             </Button>
                           </div>
                         </div>

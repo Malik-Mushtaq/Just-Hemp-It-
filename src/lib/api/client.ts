@@ -1,10 +1,12 @@
 import { isDemoToken } from "@/lib/authAudience";
 
-const DEFAULT_API_BASE_URL = "https://backend.justhempit.co.uk";
+const DEFAULT_API_BASE_URL = "https://justhempit.vercel.app";
 
 export const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL
 ).replace(/\/+$/, "");
+
+export type ApiAudience = "guest" | "retailer" | "wholesaler";
 
 export type ApiFieldErrors = Record<string, string>;
 
@@ -31,6 +33,9 @@ type ApiRequestOptions = Omit<RequestInit, "body" | "headers"> & {
 
 let apiTokenProvider: (() => string | null) | null = null;
 let apiUnauthorizedHandler: ((status: number) => void) | null = null;
+let apiAudienceProvider: (() => ApiAudience) | null = null;
+
+const AUTH_STORAGE_KEY = "hempit.auth.session";
 
 export const setApiTokenProvider = (provider: (() => string | null) | null) => {
   apiTokenProvider = provider;
@@ -41,6 +46,44 @@ export const setApiUnauthorizedHandler = (
 ) => {
   apiUnauthorizedHandler = handler;
 };
+
+export const setApiAudienceProvider = (
+  provider: (() => ApiAudience) | null,
+) => {
+  apiAudienceProvider = provider;
+};
+
+export const getApiAudience = (): ApiAudience =>
+  apiAudienceProvider?.() ||
+  (() => {
+    if (typeof window === "undefined") {
+      return "guest";
+    }
+
+    try {
+      const rawSession = window.localStorage.getItem(AUTH_STORAGE_KEY);
+
+      if (!rawSession) {
+        return "guest";
+      }
+
+      const parsed = JSON.parse(rawSession) as {
+        user?: {
+          role?: unknown;
+        };
+      };
+      const normalizedRole =
+        typeof parsed.user?.role === "string"
+          ? parsed.user.role.trim().toLowerCase()
+          : "";
+
+      return normalizedRole === "wholesaler" || normalizedRole === "wholesale"
+        ? "wholesaler"
+        : "retailer";
+    } catch {
+      return "guest";
+    }
+  })();
 
 export class ApiError extends Error {
   status: number;

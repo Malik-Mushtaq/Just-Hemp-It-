@@ -15,8 +15,8 @@ import { getGuestToken, setGuestToken } from "@/lib/guestSession";
 
 export interface CartItem {
   cart_item_id?: number;
-  product_id: number;
-  variation_id: number;
+  product_id: string | number;
+  variation_id: string | number;
   product_name: string;
   variation_name: string | null;
   quantity: number;
@@ -31,13 +31,21 @@ export interface CartItem {
 interface CartContextType {
   items: CartItem[];
   addItems: (
-    items: Array<{ productId: number; variationId: number; quantity: number }>,
+    items: Array<{
+      productId: string | number;
+      variationId: string | number;
+      quantity: number;
+    }>,
   ) => void;
-  addItem: (productId: number, variationId: number, quantity?: number) => void;
-  removeItem: (productId: number, variationId: number) => void;
+  addItem: (
+    productId: string | number,
+    variationId: string | number,
+    quantity?: number,
+  ) => void;
+  removeItem: (productId: string | number, variationId: string | number) => void;
   updateQuantity: (
-    productId: number,
-    variationId: number,
+    productId: string | number,
+    variationId: string | number,
     delta: number,
   ) => void;
   totalItems: number;
@@ -55,8 +63,8 @@ interface CartContextType {
 const CartContext = createContext<CartContextType | null>(null);
 
 type CartAddSelection = {
-  productId: number;
-  variationId: number;
+  productId: string | number;
+  variationId: string | number;
   quantity: number;
 };
 
@@ -70,15 +78,17 @@ const parseOptionalAmount = (value: unknown) => {
   return Number.isFinite(numericValue) ? numericValue : null;
 };
 
-const toPositiveInteger = (value: unknown) => {
-  const numericValue = Number(value);
-
-  if (!Number.isFinite(numericValue)) {
-    return null;
+const toEntityId = (value: unknown) => {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized.length ? normalized : null;
   }
 
-  const integerValue = Math.trunc(numericValue);
-  return integerValue > 0 ? integerValue : null;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  return null;
 };
 
 const toNonNegativeInteger = (value: unknown) => {
@@ -92,6 +102,17 @@ const toNonNegativeInteger = (value: unknown) => {
   return integerValue >= 0 ? integerValue : null;
 };
 
+const toPositiveInteger = (value: unknown) => {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return null;
+  }
+
+  const integerValue = Math.trunc(numericValue);
+  return integerValue > 0 ? integerValue : null;
+};
+
 const containsTokenMessaging = (message: string) =>
   /(token|temp[_\s-]*user|guest[_\s-]*user|bearer)/i.test(message);
 
@@ -99,8 +120,8 @@ const isNotNull = <T,>(value: T | null): value is T => value !== null;
 
 const isSameLineItem = (
   item: Pick<CartItem, "product_id" | "variation_id">,
-  productId: number,
-  variationId: number,
+  productId: string | number,
+  variationId: string | number,
 ) => item.product_id === productId && item.variation_id === variationId;
 
 export const useCart = () => {
@@ -136,8 +157,8 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     () =>
       (cartQuery.data?.cart_items || [])
         .map((item) => {
-          const productId = toPositiveInteger(item.product_id);
-          const variationId = toPositiveInteger(item.variation_id);
+          const productId = toEntityId(item.product_id);
+          const variationId = toEntityId(item.variation_id);
           const quantity = toNonNegativeInteger(item.quantity);
 
           if (!productId || !variationId || quantity === null) {
@@ -192,16 +213,16 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
 
   const mutateCartItems = (
     nextItems: Array<{
-      product_id: number;
-      variation_id: number;
+      product_id: string | number;
+      variation_id: string | number;
       quantity: number;
     }>,
   ) => {
     const normalizedItems = nextItems
       .map((item) => {
-        const productId = toPositiveInteger(item.product_id);
-        const variationId = toPositiveInteger(item.variation_id);
-        const quantity = toNonNegativeInteger(item.quantity);
+          const productId = toEntityId(item.product_id);
+          const variationId = toEntityId(item.variation_id);
+          const quantity = toNonNegativeInteger(item.quantity);
 
         if (!productId || !variationId || quantity === null) {
           return null;
@@ -217,8 +238,8 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         (
           item,
         ): item is {
-          product_id: number;
-          variation_id: number;
+          product_id: string | number;
+          variation_id: string | number;
           quantity: number;
         } => item !== null,
       );
@@ -281,8 +302,8 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
 
     const normalizedSelections = nextSelections
       .map((selection) => {
-        const productId = toPositiveInteger(selection.productId);
-        const variationId = toPositiveInteger(selection.variationId);
+        const productId = toEntityId(selection.productId);
+        const variationId = toEntityId(selection.variationId);
         const quantity = toPositiveInteger(selection.quantity);
 
         if (!productId || !variationId || !quantity) {
@@ -299,8 +320,8 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         (
           selection,
         ): selection is {
-          product_id: number;
-          variation_id: number;
+          product_id: string | number;
+          variation_id: string | number;
           quantity: number;
         } => selection !== null,
       );
@@ -316,7 +337,11 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
 
     const nextItemsMap = new Map<
       string,
-      { product_id: number; variation_id: number; quantity: number }
+      {
+        product_id: string | number;
+        variation_id: string | number;
+        quantity: number;
+      }
     >();
 
     items.forEach((item) => {
@@ -370,13 +395,17 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     setIsOpen(true);
   };
 
-  const addItem = (productId: number, variationId: number, quantity = 1) => {
+  const addItem = (
+    productId: string | number,
+    variationId: string | number,
+    quantity = 1,
+  ) => {
     addItems([{ productId, variationId, quantity }]);
   };
 
   const updateQuantity = (
-    productId: number,
-    variationId: number,
+    productId: string | number,
+    variationId: string | number,
     delta: number,
   ) => {
     if (!Number.isInteger(delta) || delta === 0) {
@@ -418,7 +447,10 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     mutateCartItems(nextItems);
   };
 
-  const removeItem = (productId: number, variationId: number) => {
+  const removeItem = (
+    productId: string | number,
+    variationId: string | number,
+  ) => {
     const existing = items.find((item) =>
       isSameLineItem(item, productId, variationId),
     );

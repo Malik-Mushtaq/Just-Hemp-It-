@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useCart } from "@/context/CartContext";
 import { formatGBP } from "@/lib/currency";
 import productCardCartIcon from "@/assets/24 x 24.svg";
+import { getProductById, getProductDefaultVariation } from "@/lib/api/product";
 
 const toSlug = (name: string) =>
   name
@@ -13,8 +14,8 @@ const toSlug = (name: string) =>
     .replace(/[^a-z0-9-]/g, "");
 
 interface Product {
-  id?: number;
-  variationId?: number;
+  id?: string | number;
+  variationId?: string | number;
   variationLabel?: string;
   name: string;
   price: number;
@@ -41,6 +42,9 @@ const ProductSlider = ({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
+  const [quickAddProductId, setQuickAddProductId] = useState<string | number | null>(
+    null,
+  );
 
   const checkScroll = () => {
     if (scrollRef.current) {
@@ -99,14 +103,15 @@ const ProductSlider = ({
           >
             {products.map((p, i) => {
               const canQuickAdd =
-                typeof p.id === "number" && typeof p.variationId === "number";
+                (p.id !== undefined && p.variationId !== undefined) ||
+                p.id !== undefined;
 
               return (
                 <div
                   key={p.id || i}
                   className="snap-start shrink-0 w-[260px] bg-card rounded-xl border shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300 overflow-hidden group"
                 >
-                  <Link to={`/product/${toSlug(p.name)}`}>
+                  <Link to={`/product/${encodeURIComponent(String(p.id || toSlug(p.name)))}`}>
                     <div className="h-52 bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center overflow-hidden">
                       {p.image ? (
                         <img
@@ -122,7 +127,7 @@ const ProductSlider = ({
                     </div>
                   </Link>
                   <div className="p-4 space-y-2">
-                    <Link to={`/product/${toSlug(p.name)}`}>
+                    <Link to={`/product/${encodeURIComponent(String(p.id || toSlug(p.name)))}`}>
                       <h3 className="font-semibold text-sm truncate hover:text-primary transition-colors">
                         {p.name}
                       </h3>
@@ -166,9 +171,38 @@ const ProductSlider = ({
                         variant="outline"
                         className="rounded-full gap-1.5 text-xs"
                         onClick={() => {
-                          if (canQuickAdd) {
-                            addItem(p.id, p.variationId);
-                          }
+                          const addFromResolvedProduct = async () => {
+                            if (p.id !== undefined && p.variationId !== undefined) {
+                              addItem(p.id, p.variationId);
+                              return;
+                            }
+
+                            if (p.id === undefined) {
+                              return;
+                            }
+
+                            setQuickAddProductId(p.id);
+
+                            try {
+                              const detailedProduct = await getProductById(p.id);
+                              const resolvedVariation =
+                                getProductDefaultVariation(detailedProduct);
+
+                              if (!resolvedVariation) {
+                                throw new Error(
+                                  "This product has no purchasable variants.",
+                                );
+                              }
+
+                              addItem(detailedProduct.id, resolvedVariation.variation_id);
+                            } catch (error) {
+                              console.error(error);
+                            } finally {
+                              setQuickAddProductId(null);
+                            }
+                          };
+
+                          void addFromResolvedProduct();
                         }}
                         disabled={!canQuickAdd || isUpdating}
                       >
@@ -179,7 +213,7 @@ const ProductSlider = ({
                           aria-hidden="true"
                           className="h-3.5 w-3.5"
                         />
-                        <span>Add</span>
+                        <span>{quickAddProductId === p.id ? "Adding..." : "Add"}</span>
                       </Button>
                     </div>
                   </div>

@@ -12,6 +12,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AuthUser } from "@/lib/api/auth";
 import {
+  ApiAudience,
+  setApiAudienceProvider,
   setApiTokenProvider,
   setApiUnauthorizedHandler,
 } from "@/lib/api/client";
@@ -57,6 +59,16 @@ const isBrowser = () => typeof window !== "undefined";
 const isPublicAuthRoute = (pathname: string) => PUBLIC_AUTH_ROUTES.has(pathname);
 const getRouteTarget = (pathname: string, search: string) =>
   `${pathname}${search}`;
+
+const getAudienceForUser = (user: AuthUser | null | undefined): ApiAudience => {
+  const normalizedRole = user?.role?.trim().toLowerCase();
+
+  if (normalizedRole === "wholesaler" || normalizedRole === "wholesale") {
+    return "wholesaler";
+  }
+
+  return user ? "retailer" : "guest";
+};
 
 const parseJwtPayload = (token: string): { exp?: number } | null => {
   try {
@@ -202,7 +214,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       queryClient.removeQueries({ queryKey: ["cart"] });
       queryClient.removeQueries({ queryKey: ["dashboard"] });
       queryClient.removeQueries({ queryKey: ["order-history"] });
+      queryClient.removeQueries({ queryKey: ["products"] });
       queryClient.removeQueries({ queryKey: ["user"] });
+      queryClient.removeQueries({ queryKey: ["user-profile"] });
 
       if (reason === "manual") {
         toast({
@@ -268,6 +282,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [session?.token]);
 
   useEffect(() => {
+    setApiAudienceProvider(() => {
+      if (session?.user) {
+        return getAudienceForUser(session.user);
+      }
+
+      return "guest";
+    });
+
+    return () => {
+      setApiAudienceProvider(null);
+    };
+  }, [session?.user]);
+
+  useEffect(() => {
     setApiUnauthorizedHandler(() => {
       logout({ reason: "expired" });
     });
@@ -308,6 +336,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     logoutLockRef.current = false;
     // Once logged in, always prefer user token over guest token.
     clearGuestToken();
+    queryClient.removeQueries({ queryKey: ["cart"] });
+    queryClient.removeQueries({ queryKey: ["dashboard"] });
+    queryClient.removeQueries({ queryKey: ["order-history"] });
+    queryClient.removeQueries({ queryKey: ["products"] });
+    queryClient.removeQueries({ queryKey: ["user-profile"] });
     setSessionState(nextSession);
     persistSession(nextSession);
   };

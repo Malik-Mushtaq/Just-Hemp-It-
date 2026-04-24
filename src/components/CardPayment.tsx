@@ -28,8 +28,8 @@ const ST_EXPIRATION_DATE_ID = "st-expiration-date";
 const ST_SECURITY_CODE_ID = "st-security-code";
 const CARD_FORM_RENDER_TIMEOUT_MS = 8000;
 
-const CARD_PROCESS_PATH = "/api/v1/payments/card/process";
-const CARD_VERIFY_PATH = "/api/v1/payments/response/verify";
+const CARD_PROCESS_PATH = "/api/payments/card/process";
+const CARD_VERIFY_PATH = "/api/payments/response/verify";
 
 // ─── Helpers ───────────────────────────────────────────────
 
@@ -173,26 +173,13 @@ const CardPayment: React.FC<CardPaymentProps> = ({
     if (!callbackJwt) throw new Error("Payment callback missing JWT");
 
     const baseUrl = getPaymentApiBaseUrl();
-    const verifyBody: any = {
+    const verifyBody: {
+      jwt: string;
+      payment_session_id: string;
+    } = {
       jwt: callbackJwt,
-      paymentSessionId: meta.paymentSessionId,
-      requestReference: meta.requestReference,
+      payment_session_id: meta.paymentSessionId,
     };
-
-    // Add shipping data if available
-    if (shippingData) {
-      verifyBody.shippingData = {
-        email: shippingData.email,
-        first_name: shippingData.first_name,
-        last_name: shippingData.last_name,
-        phone: shippingData.phone,
-        street_address: shippingData.street_address,
-        city: shippingData.city,
-        state: shippingData.state,
-        postal_code: shippingData.postal_code,
-        country: shippingData.country,
-      };
-    }
 
     const response = await fetch(`${baseUrl}${CARD_VERIFY_PATH}`, {
       method: "POST",
@@ -276,17 +263,26 @@ const CardPayment: React.FC<CardPaymentProps> = ({
       }
 
       const baseUrl = getPaymentApiBaseUrl();
-      const initRes = await fetch(`${baseUrl}/api/v1/payments/jwt/init`, {
+      const initRes = await fetch(`${baseUrl}/api/payments/jwt/init`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          amount,
+          amount: numericAmount,
           currency,
-          authToken: token,
-          paymentMethod: "CARD",
+          payment_method: "card",
+          email: shippingData?.email || undefined,
+          shipping_address: shippingData
+            ? {
+                address1: shippingData.street_address,
+                city: shippingData.city,
+                state: shippingData.state,
+                postal_code: shippingData.postal_code,
+                country: shippingData.country,
+              }
+            : undefined,
         }),
       });
 
@@ -304,16 +300,16 @@ const CardPayment: React.FC<CardPaymentProps> = ({
         );
       }
 
-      if (!initData?.jwt || !initData?.paymentSessionId) {
+      if (!initData?.jwt || !initData?.payment_session_id) {
         throw new Error("Payment session response is missing required fields");
       }
 
       const meta: PaymentSessionMeta = {
         paymentMethod: "CARD",
-        paymentSessionId: initData.paymentSessionId,
-        requestReference: initData.paymentSessionId,
+        paymentSessionId: initData.payment_session_id,
+        requestReference: initData.payment_session_id,
         jwt: initData.jwt,
-        processPath: initData.processPath,
+        processPath: initData.process_path,
       };
 
       setSessionMeta(meta);

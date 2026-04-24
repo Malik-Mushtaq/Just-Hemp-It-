@@ -37,7 +37,7 @@ export interface GetProductReviewsResponse {
 }
 
 export const addReview = (payload: AddReviewPayload) =>
-  apiRequest<AddReviewResponse>("/review/add", {
+  apiRequest<AddReviewResponse>("/api/review/add", {
     method: "POST",
     body: payload,
   });
@@ -60,8 +60,8 @@ export const getProductReviews = (
 
   return apiRequest<GetProductReviewsResponse>(
     query
-      ? `/review/product/${productId}?${query}`
-      : `/review/product/${productId}`,
+      ? `/api/review/product/${productId}?${query}`
+      : `/api/review/product/${productId}`,
     {
       method: "GET",
       token: null,

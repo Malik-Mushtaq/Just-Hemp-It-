@@ -16,7 +16,7 @@ export interface SubscribeNewsletterResponse {
 }
 
 export const subscribeNewsletter = (payload: SubscribeNewsletterPayload) =>
-  apiRequest<SubscribeNewsletterResponse>("/subscribe/news-letter", {
+  apiRequest<SubscribeNewsletterResponse>("/api/subscribe/news-letter", {
     method: "POST",
     body: payload,
     token: null,
