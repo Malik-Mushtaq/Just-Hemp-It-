@@ -22,6 +22,7 @@ export interface CartItem {
   quantity: number;
   price: number;
   original_price: number;
+  discounted_price?: number | null;
   subtotal: number;
   available_stock: number | null;
   status: boolean;
@@ -50,8 +51,10 @@ interface CartContextType {
   ) => void;
   totalItems: number;
   subtotal: number;
+  discountAmount: number;
   shippingFee: number;
   finalTotal: number;
+  appliedCoupon: string | null;
   isLoading: boolean;
   isUpdating: boolean;
   errorMessage: string | null;
@@ -174,6 +177,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
             quantity,
             price: parseAmount(item.price),
             original_price: parseAmount(item.original_price),
+            discounted_price: parseOptionalAmount(item.discounted_price),
             subtotal: parseAmount(item.subtotal),
             available_stock: parseOptionalAmount(item.available_stock),
             status: item.status !== false,
@@ -473,8 +477,14 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
 
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = parseAmount(cartQuery.data?.subtotal);
+  const discountAmount = parseAmount(cartQuery.data?.discount_amount);
   const shippingFee = parseAmount(cartQuery.data?.shipping_fee);
   const finalTotal = parseAmount(cartQuery.data?.final_total);
+  const appliedCoupon =
+    typeof cartQuery.data?.applied_coupon === "string" &&
+    cartQuery.data.applied_coupon.trim().length
+      ? cartQuery.data.applied_coupon.trim()
+      : null;
 
   const value = useMemo<CartContextType>(
     () => ({
@@ -485,8 +495,10 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       updateQuantity,
       totalItems,
       subtotal,
+      discountAmount,
       shippingFee,
       finalTotal,
+      appliedCoupon,
       isLoading: cartQuery.isLoading,
       isUpdating: addToCartMutation.isPending,
       errorMessage:
@@ -503,10 +515,12 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       addToCartMutation.isPending,
       cartQuery.error,
       cartQuery.isLoading,
+      discountAmount,
       finalTotal,
       isOpen,
       items,
       removeItem,
+      appliedCoupon,
       shippingFee,
       subtotal,
       totalItems,

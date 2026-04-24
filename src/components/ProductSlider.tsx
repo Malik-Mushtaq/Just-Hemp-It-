@@ -19,6 +19,7 @@ interface Product {
   variationLabel?: string;
   name: string;
   price: number;
+  pricePrefix?: string;
   originalPrice?: number | null;
   minimumOrderQuantity?: number | null;
   rating: number;
@@ -157,7 +158,7 @@ const ProductSlider = ({
                     <div className="flex items-center justify-between pt-1">
                       <div className="flex flex-col">
                         <span className="text-lg font-bold">
-                          {formatGBP(p.price)}
+                          {p.pricePrefix ? `${p.pricePrefix} ${formatGBP(p.price)}` : formatGBP(p.price)}
                         </span>
                         {typeof p.originalPrice === "number" &&
                         p.originalPrice > p.price ? (

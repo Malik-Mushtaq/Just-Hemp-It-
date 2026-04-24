@@ -17,11 +17,13 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import PageTransition from "@/components/PageTransition";
 import { getCart, addToCart } from "@/lib/api/cart";
+import { applyCoupon } from "@/lib/api/coupon";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { ApiError } from "@/lib/api/client";
 import { formatGBP, formatGBPFromUnknown } from "@/lib/currency";
 import { getGuestToken } from "@/lib/guestSession";
+import { useEffect, useState } from "react";
 
 const CouponSchema = z.object({
   coupon_code: z
@@ -36,6 +38,12 @@ const CouponSchema = z.object({
 });
 
 type CouponFormValues = z.infer<typeof CouponSchema>;
+
+type AppliedCouponState = {
+  code: string;
+  discountAmount: number;
+  discountedSubtotal: number;
+};
 
 const getKnownStockLimit = (value: unknown) => {
   const numericValue = Number(value);
@@ -86,12 +94,37 @@ const CartPage = () => {
       coupon_code: "",
     },
   });
+  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCouponState | null>(
+    null,
+  );
 
   const cartQuery = useQuery({
     queryKey: ["cart"],
     queryFn: getCart,
     enabled: hasAccessToken,
     retry: 1,
+  });
+
+  const applyCouponMutation = useMutation({
+    mutationFn: applyCoupon,
+    onError: (error) => {
+      setAppliedCoupon(null);
+
+      if (error instanceof ApiError) {
+        toast({
+          title: "Coupon failed",
+          description: error.message || "Failed to apply coupon",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Coupon failed",
+        description: "An unexpected error occurred",
+        variant: "destructive",
+      });
+    },
   });
 
   const addToCartMutation = useMutation({
@@ -126,6 +159,40 @@ const CartPage = () => {
         description,
         variant: couponFeedback ? "destructive" : "default",
       });
+
+      const nextSubtotal =
+        parseFloat(String(response?.subtotal ?? 0)) || 0;
+
+      if (appliedCoupon?.code && nextSubtotal > 0) {
+        applyCouponMutation.mutate(
+          {
+            code: appliedCoupon.code,
+            subtotal: nextSubtotal,
+          },
+          {
+            onSuccess: (couponResponse) => {
+              const discountAmount =
+                Number(
+                  couponResponse.data?.discount_amount ??
+                    couponResponse.discount_amount ??
+                    0,
+                ) || 0;
+              const discountedSubtotal =
+                Number(
+                  couponResponse.data?.final_total ??
+                    couponResponse.final_subtotal ??
+                    nextSubtotal,
+                ) || nextSubtotal;
+
+              setAppliedCoupon({
+                code: couponResponse.data?.coupon_code || appliedCoupon.code,
+                discountAmount,
+                discountedSubtotal,
+              });
+            },
+          },
+        );
+      }
     },
     onError: (error) => {
       if (error instanceof ApiError) {
@@ -143,6 +210,13 @@ const CartPage = () => {
       }
     },
   });
+
+  useEffect(() => {
+    if ((cartQuery.data?.cart_items || []).length === 0) {
+      setAppliedCoupon(null);
+      reset({ coupon_code: "" });
+    }
+  }, [cartQuery.data?.cart_items, reset]);
 
   if (!hasAccessToken) {
     return (
@@ -220,12 +294,19 @@ const CartPage = () => {
 
   const cartData = cartQuery.data;
   const items = cartData?.cart_items || [];
-  const subtotal = parseFloat(String(cartData?.subtotal ?? 0)) || 0;
-  const discountAmount =
-    parseFloat(String(cartData?.discount_amount ?? 0)) || 0;
+  const rawSubtotal = parseFloat(String(cartData?.subtotal ?? 0)) || 0;
   const shippingFee = parseFloat(String(cartData?.shipping_fee ?? 0)) || 0;
-  const finalTotal = parseFloat(String(cartData?.final_total ?? 0)) || 0;
-  const appliedCouponCode = cartData?.applied_coupon ?? null;
+  const backendFinalTotal =
+    parseFloat(String(cartData?.final_total ?? 0)) || 0;
+  const subtotal = rawSubtotal;
+  const discountAmount =
+    appliedCoupon?.discountAmount ??
+    (parseFloat(String(cartData?.discount_amount ?? 0)) || 0);
+  const discountedSubtotal =
+    appliedCoupon?.discountedSubtotal ??
+    Math.max(0, rawSubtotal - discountAmount);
+  const finalTotal = discountedSubtotal + shippingFee;
+  const appliedCouponCode = appliedCoupon?.code ?? cartData?.applied_coupon ?? null;
 
   const toCartPayloadItems = (
     quantityResolver?: (item: (typeof items)[number]) => number,
@@ -294,7 +375,6 @@ const CartPage = () => {
 
     addToCartMutation.mutate({
       items: payloadItems,
-      coupon_code: appliedCouponCode || undefined,
     });
   };
 
@@ -308,38 +388,45 @@ const CartPage = () => {
       return;
     }
 
-    const payloadItems = toCartPayloadItems();
+    const couponCode = values.coupon_code.trim();
 
-    if (!payloadItems.length) {
-      toast({
-        title: "Cart update failed",
-        description: "No valid product variation found to update the cart.",
-        variant: "destructive",
-      });
-      return;
-    }
+    applyCouponMutation.mutate(
+      {
+        code: couponCode,
+        subtotal,
+      },
+      {
+        onSuccess: (response) => {
+          const discount =
+            Number(response.data?.discount_amount ?? response.discount_amount ?? 0) ||
+            0;
+          const nextSubtotal =
+            Number(response.data?.final_total ?? response.final_subtotal ?? subtotal) ||
+            subtotal;
+          const resolvedCode =
+            response.data?.coupon_code ||
+            response.coupon?.code ||
+            couponCode;
 
-    addToCartMutation.mutate({
-      items: payloadItems,
-      coupon_code: values.coupon_code.trim().toUpperCase(),
-    });
+          setAppliedCoupon({
+            code: resolvedCode,
+            discountAmount: discount,
+            discountedSubtotal: nextSubtotal,
+          });
+
+          reset({ coupon_code: "" });
+          toast({
+            title: "Coupon applied",
+            description: response.message || response.msg || "Coupon applied successfully.",
+          });
+        },
+      },
+    );
   });
 
   const handleRemoveCoupon = () => {
-    const payloadItems = toCartPayloadItems();
-
-    if (!payloadItems.length) {
-      toast({
-        title: "Cart update failed",
-        description: "No valid product variation found to update the cart.",
-        variant: "destructive",
-      });
-      return;
-    }
-    addToCartMutation.mutate(
-      { items: payloadItems, coupon_code: "" },
-      { onSuccess: () => reset() },
-    );
+    setAppliedCoupon(null);
+    reset({ coupon_code: "" });
   };
 
   return (
@@ -495,9 +582,15 @@ const CartPage = () => {
                               variant="destructive"
                               size="sm"
                               onClick={handleRemoveCoupon}
-                              disabled={addToCartMutation.isPending}
+                              disabled={
+                                addToCartMutation.isPending ||
+                                applyCouponMutation.isPending
+                              }
                             >
-                              {addToCartMutation.isPending ? "..." : "Remove"}
+                              {addToCartMutation.isPending ||
+                              applyCouponMutation.isPending
+                                ? "..."
+                                : "Remove"}
                             </Button>
                           </>
                         ) : (
@@ -510,17 +603,22 @@ const CartPage = () => {
                               placeholder="Enter coupon"
                               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                               {...register("coupon_code")}
-                              disabled={addToCartMutation.isPending}
+                              disabled={
+                                addToCartMutation.isPending ||
+                                applyCouponMutation.isPending
+                              }
                             />
                             <Button
                               type="submit"
                               variant="outline"
                               size="sm"
                               disabled={
-                                addToCartMutation.isPending || !items.length
+                                addToCartMutation.isPending ||
+                                applyCouponMutation.isPending ||
+                                !items.length
                               }
                             >
-                              {addToCartMutation.isPending
+                              {applyCouponMutation.isPending
                                 ? "Applying..."
                                 : "Apply"}
                             </Button>
@@ -539,6 +637,12 @@ const CartPage = () => {
                         <span className="text-muted-foreground">Subtotal</span>
                         <span>{formatGBP(subtotal)}</span>
                       </div>
+                      {appliedCouponCode ? (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Coupon</span>
+                          <span>{appliedCouponCode}</span>
+                        </div>
+                      ) : null}
                       {discountAmount > 0 ? (
                         <div className="flex justify-between text-primary">
                           <span className="text-muted-foreground">
@@ -557,7 +661,7 @@ const CartPage = () => {
                     </div>
                     <div className="border-t pt-3 flex justify-between font-bold">
                       <span>Total</span>
-                      <span>{formatGBP(finalTotal)}</span>
+                      <span>{formatGBP(finalTotal || backendFinalTotal)}</span>
                     </div>
                     <Button
                       asChild

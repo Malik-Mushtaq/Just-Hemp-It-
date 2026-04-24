@@ -14,6 +14,7 @@ export interface CartItem {
   moq?: number | string | null;
   price: number | string;
   original_price: number | string;
+  discounted_price?: number | string | null;
   subtotal: number | string;
   available_stock?: number | null;
   status?: boolean | null;
@@ -23,6 +24,12 @@ export interface CartItem {
 type CartSummary = {
   total_items?: number;
   subtotal?: number;
+  discount_amount?: number;
+  shipping_fee?: number;
+  final_total?: number;
+  applied_coupon?: string | null;
+  coupon_code?: string | null;
+  original_total?: number;
 };
 
 type CartUser = {
@@ -44,7 +51,15 @@ type CartApiItem = {
   quantity?: number;
   price?: number | string;
   original_price?: number | string;
+  compare_at_price?: number | string | null;
+  discounted_price?: number | string | null;
+  sale_price?: number | string | null;
+  final_price?: number | string | null;
   subtotal?: number | string;
+  final_subtotal?: number | string | null;
+  original_subtotal?: number | string | null;
+  line_total?: number | string | null;
+  discount_amount?: number | string | null;
   image?: string | null;
   available_stock?: number | null;
   stock?: number | null;
@@ -59,6 +74,21 @@ type CartApiResponse = {
   checkout_mode?: "guest" | "authenticated" | null;
   user?: CartUser;
   message?: string;
+  subtotal?: number | string;
+  discount_amount?: number | string;
+  shipping_fee?: number | string;
+  final_total?: number | string;
+  applied_coupon?: string | null;
+  coupon_code?: string | null;
+  coupon_msg?: string | null;
+  original_total?: number | string;
+  data?: {
+    original_total?: number | string;
+    discount_amount?: number | string;
+    final_total?: number | string;
+    shipping_fee?: number | string;
+    coupon_code?: string | null;
+  } | null;
 };
 
 export interface CartResponse {
@@ -167,29 +197,85 @@ const toEntityId = (value: unknown) => {
   return "";
 };
 
-const normalizeItem = (item: CartApiItem): CartItem => ({
+const normalizeItem = (item: CartApiItem): CartItem => {
+  const quantity = item.quantity ?? 0;
+  const originalPrice =
+    item.original_price ?? item.compare_at_price ?? item.price ?? 0;
+  const effectivePrice =
+    item.discounted_price ?? item.sale_price ?? item.final_price ?? item.price ?? 0;
+
+  return {
   cart_item_id: item.cart_item_id,
   product_id: toEntityId(item.product_id),
   variation_id: toEntityId(item.variant_id ?? item.variation_id),
   product_name: item.product_name || item.title || item.name || "Product",
   variation_name: item.variation_name ?? item.variant_name ?? null,
-  quantity: item.quantity ?? 0,
+  quantity,
   minimum_order_quantity:
     item.min_order_qty_wholesale ?? item.min_order_qty_retail ?? null,
   min_order_quantity:
     item.min_order_qty_wholesale ?? item.min_order_qty_retail ?? null,
-  price: item.price ?? 0,
-  original_price: item.original_price ?? item.price ?? 0,
+  price: effectivePrice,
+  original_price: originalPrice,
+  discounted_price: item.discounted_price ?? item.sale_price ?? item.final_price ?? null,
   subtotal:
-    item.subtotal ?? Number(item.price ?? 0) * Number(item.quantity ?? 0),
+    item.final_subtotal ??
+    item.line_total ??
+    item.subtotal ??
+    Number(effectivePrice ?? 0) * Number(quantity ?? 0),
   available_stock: item.available_stock ?? item.stock ?? null,
   status: true,
   image: item.image ?? null,
-});
+  };
+};
+
+const parseAmount = (value: unknown, fallback = 0) => {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : fallback;
+};
 
 const normalizeCartResponse = (response: CartApiResponse): CartResponse => {
   const cartItems = (response.items || []).map(normalizeItem);
-  const subtotal = response.summary?.subtotal ?? 0;
+  const itemSubtotal = cartItems.reduce(
+    (sum, item) => sum + parseAmount(item.subtotal),
+    0,
+  );
+  const itemOriginalSubtotal = cartItems.reduce(
+    (sum, item) => sum + parseAmount(item.original_price) * parseAmount(item.quantity),
+    0,
+  );
+  const subtotal = parseAmount(
+    response.summary?.original_total ??
+      response.summary?.subtotal ??
+      response.original_total ??
+      response.subtotal,
+    itemOriginalSubtotal || itemSubtotal,
+  );
+  const discountAmount = parseAmount(
+    response.summary?.discount_amount ??
+      response.discount_amount ??
+      response.data?.discount_amount,
+    Math.max(0, subtotal - itemSubtotal),
+  );
+  const shippingFee = parseAmount(
+    response.summary?.shipping_fee ??
+      response.shipping_fee ??
+      response.data?.shipping_fee,
+    0,
+  );
+  const finalTotal = parseAmount(
+    response.summary?.final_total ??
+      response.final_total ??
+      response.data?.final_total,
+    Math.max(0, subtotal - discountAmount) + shippingFee,
+  );
+  const appliedCoupon =
+    response.summary?.applied_coupon ??
+    response.summary?.coupon_code ??
+    response.applied_coupon ??
+    response.coupon_code ??
+    response.data?.coupon_code ??
+    null;
 
   return {
     msg: response.message || "Cart updated successfully.",
@@ -197,10 +283,10 @@ const normalizeCartResponse = (response: CartApiResponse): CartResponse => {
     cart_id: 0,
     cart_items: cartItems,
     subtotal,
-    discount_amount: 0,
-    shipping_fee: 0,
-    final_total: subtotal,
-    applied_coupon: null,
+    discount_amount: discountAmount,
+    shipping_fee: shippingFee,
+    final_total: finalTotal,
+    applied_coupon: appliedCoupon,
     guest_token: response.guest_token ?? null,
     checkout_mode: response.checkout_mode ?? null,
     user: response.user,
@@ -208,7 +294,10 @@ const normalizeCartResponse = (response: CartApiResponse): CartResponse => {
   };
 };
 
-const addSingleCartItem = async (item: CartAddItem): Promise<CartAddResponse> => {
+const addSingleCartItem = async (
+  item: CartAddItem,
+  couponCode?: string,
+): Promise<CartAddResponse> => {
   const isWholesaler = getApiAudience() === "wholesaler";
   const response = await apiRequest<CartApiResponse>(
     isWholesaler ? "/api/wholesaler/cart/add" : "/api/cart/add",
@@ -218,6 +307,7 @@ const addSingleCartItem = async (item: CartAddItem): Promise<CartAddResponse> =>
         product_id: item.product_id,
         variant_id: item.variation_id,
         quantity: item.quantity,
+        coupon_code: couponCode,
         ...(isWholesaler ? {} : { email: item.email }),
       },
     },
@@ -227,6 +317,7 @@ const addSingleCartItem = async (item: CartAddItem): Promise<CartAddResponse> =>
 
   return {
     ...normalized,
+    coupon_msg: response.coupon_msg ?? undefined,
     guest_token: response.guest_token ?? null,
     temp_user_token: response.guest_token ?? undefined,
   };
@@ -251,7 +342,7 @@ export const addToCart = async (payload: CartAddPayload) => {
     latestResponse = await addSingleCartItem({
       ...item,
       email: item.email ?? payload.email,
-    });
+    }, payload.coupon_code);
   }
 
   return (

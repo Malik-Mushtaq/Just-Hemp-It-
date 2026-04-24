@@ -60,6 +60,7 @@ const Index = () => {
         variationLabel: defaultVariation?.variation_name,
         name: product.product_name,
         price: pricing.currentPrice,
+        pricePrefix: pricing.hasRange ? "From" : undefined,
         originalPrice: pricing.hasDiscount ? pricing.originalPrice : null,
         minimumOrderQuantity: getProductMinimumOrderQuantity(product),
         rating: Math.max(0, Math.min(5, Math.round(product.avg_rating || 0))),

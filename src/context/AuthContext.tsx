@@ -274,7 +274,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [location.pathname, location.search, navigate]);
 
   useEffect(() => {
-    setApiTokenProvider(() => session?.token || getGuestToken());
+    const activeToken = session?.token || getGuestToken();
+
+    console.log("[Auth] Active token:", activeToken);
+
+    setApiTokenProvider(() => activeToken);
 
     return () => {
       setApiTokenProvider(null);

@@ -487,6 +487,12 @@ const Checkout = () => {
                     <span className="text-muted-foreground">Subtotal</span>
                     <span>{formatGBPFromUnknown(cartData.subtotal)}</span>
                   </div>
+                  {cartData.applied_coupon ? (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Coupon</span>
+                      <span className="font-medium">{cartData.applied_coupon}</span>
+                    </div>
+                  ) : null}
                   {Number(cartData.discount_amount) > 0 && (
                     <div className="flex justify-between text-primary">
                       <span className="text-muted-foreground">Discount</span>

@@ -10,6 +10,10 @@ const CartSidebar = () => {
     removeItem,
     updateQuantity,
     subtotal,
+    discountAmount,
+    shippingFee,
+    finalTotal,
+    appliedCoupon,
     isLoading,
     isUpdating,
     errorMessage,
@@ -147,6 +151,26 @@ const CartSidebar = () => {
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Subtotal</span>
             <span className="font-bold text-base">{formatGBP(subtotal)}</span>
+          </div>
+          {appliedCoupon ? (
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Coupon</span>
+              <span className="font-medium">{appliedCoupon}</span>
+            </div>
+          ) : null}
+          {discountAmount > 0 ? (
+            <div className="flex justify-between text-sm text-primary">
+              <span className="text-muted-foreground">Discount</span>
+              <span>-{formatGBP(discountAmount)}</span>
+            </div>
+          ) : null}
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Shipping</span>
+            <span>{shippingFee === 0 ? "Free" : formatGBP(shippingFee)}</span>
+          </div>
+          <div className="flex justify-between text-sm font-semibold">
+            <span>Total</span>
+            <span>{formatGBP(finalTotal)}</span>
           </div>
           {subtotal < 50 && (
             <p className="text-xs text-muted-foreground">
