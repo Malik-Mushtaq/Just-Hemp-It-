@@ -21,11 +21,14 @@ export interface CartItem {
   variation_name: string | null;
   quantity: number;
   price: number;
-  original_price: number;
+  original_price: number | null;
   discounted_price?: number | null;
   subtotal: number;
+  stock?: number | null;
   available_stock: number | null;
   status: boolean;
+  is_out_of_stock?: boolean;
+  stock_status?: "available" | "out_of_stock";
   image?: string | null;
 }
 
@@ -176,11 +179,17 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
             variation_name: item.variation_name || null,
             quantity,
             price: parseAmount(item.price),
-            original_price: parseAmount(item.original_price),
+            original_price: parseOptionalAmount(item.original_price),
             discounted_price: parseOptionalAmount(item.discounted_price),
             subtotal: parseAmount(item.subtotal),
+            stock: parseOptionalAmount(item.stock),
             available_stock: parseOptionalAmount(item.available_stock),
             status: item.status !== false,
+            is_out_of_stock: item.is_out_of_stock === true,
+            stock_status:
+              item.stock_status === "out_of_stock"
+                ? ("out_of_stock" as const)
+                : ("available" as const),
             image: item.image || null,
           };
         })
@@ -200,8 +209,6 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         ...(previous as Record<string, unknown>),
         ...response,
       }));
-
-      void queryClient.invalidateQueries({ queryKey: ["cart"] });
     },
     onError: (error) => {
       toast({
@@ -260,7 +267,6 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     addToCartMutation.mutate(
       {
         items: normalizedItems,
-        coupon_code: cartQuery.data?.applied_coupon || undefined,
       },
       {
         onSuccess: (response) => {
@@ -440,15 +446,13 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    const nextItems = items.map((item) => ({
-      product_id: item.product_id,
-      variation_id: item.variation_id,
-      quantity: isSameLineItem(item, productId, variationId)
-        ? nextQuantity
-        : item.quantity,
-    }));
-
-    mutateCartItems(nextItems);
+    mutateCartItems([
+      {
+        product_id: existing.product_id,
+        variation_id: existing.variation_id,
+        quantity: nextQuantity,
+      },
+    ]);
   };
 
   const removeItem = (
@@ -463,16 +467,13 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    // Send quantity 0 for deleted line-item; backend skips 0-qty rows.
-    const nextItems = items.map((item) => ({
-      product_id: item.product_id,
-      variation_id: item.variation_id,
-      quantity: isSameLineItem(item, productId, variationId)
-        ? 0
-        : item.quantity,
-    }));
-
-    mutateCartItems(nextItems);
+    mutateCartItems([
+      {
+        product_id: existing.product_id,
+        variation_id: existing.variation_id,
+        quantity: 0,
+      },
+    ]);
   };
 
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);

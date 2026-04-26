@@ -13,11 +13,16 @@ export interface CartItem {
   min_qty?: number | string | null;
   moq?: number | string | null;
   price: number | string;
-  original_price: number | string;
+  compare_at_price?: number | string | null;
+  original_price: number | string | null;
   discounted_price?: number | string | null;
+  discount_percentage?: number;
   subtotal: number | string;
+  stock?: number | null;
   available_stock?: number | null;
   status?: boolean | null;
+  is_out_of_stock?: boolean;
+  stock_status?: "available" | "out_of_stock";
   image?: string | null;
 }
 
@@ -63,6 +68,9 @@ type CartApiItem = {
   image?: string | null;
   available_stock?: number | null;
   stock?: number | null;
+  status?: boolean | null;
+  is_out_of_stock?: boolean | null;
+  stock_status?: "available" | "out_of_stock" | null;
   min_order_qty_wholesale?: number | null;
   min_order_qty_retail?: number | null;
 };
@@ -115,8 +123,8 @@ export interface CartAddItem {
 }
 
 export interface CartAddPayload {
-  items: CartAddItem[];
-  coupon_code?: string;
+  items?: CartAddItem[];
+  coupon_code?: string | null;
   email?: string;
 }
 
@@ -203,29 +211,53 @@ const normalizeItem = (item: CartApiItem): CartItem => {
     item.original_price ?? item.compare_at_price ?? item.price ?? 0;
   const effectivePrice =
     item.discounted_price ?? item.sale_price ?? item.final_price ?? item.price ?? 0;
+  const availableStock = item.available_stock ?? item.stock ?? null;
+  const isOutOfStock =
+    typeof item.is_out_of_stock === "boolean"
+      ? item.is_out_of_stock
+      : item.status === false;
+  const stockStatus =
+    item.stock_status ?? (isOutOfStock ? "out_of_stock" : "available");
+  const status =
+    typeof item.status === "boolean" ? item.status : !isOutOfStock;
+  const originalAmount = parseAmount(originalPrice);
+  const effectiveAmount = parseAmount(effectivePrice);
+  const discountPercentage =
+    originalAmount > effectiveAmount
+      ? Math.round(((originalAmount - effectiveAmount) / originalAmount) * 100)
+      : 0;
 
   return {
-  cart_item_id: item.cart_item_id,
-  product_id: toEntityId(item.product_id),
-  variation_id: toEntityId(item.variant_id ?? item.variation_id),
-  product_name: item.product_name || item.title || item.name || "Product",
-  variation_name: item.variation_name ?? item.variant_name ?? null,
-  quantity,
-  minimum_order_quantity:
-    item.min_order_qty_wholesale ?? item.min_order_qty_retail ?? null,
-  min_order_quantity:
-    item.min_order_qty_wholesale ?? item.min_order_qty_retail ?? null,
-  price: effectivePrice,
-  original_price: originalPrice,
-  discounted_price: item.discounted_price ?? item.sale_price ?? item.final_price ?? null,
-  subtotal:
-    item.final_subtotal ??
-    item.line_total ??
-    item.subtotal ??
-    Number(effectivePrice ?? 0) * Number(quantity ?? 0),
-  available_stock: item.available_stock ?? item.stock ?? null,
-  status: true,
-  image: item.image ?? null,
+    cart_item_id: item.cart_item_id,
+    product_id: toEntityId(item.product_id),
+    variation_id: toEntityId(item.variant_id ?? item.variation_id),
+    product_name: item.product_name || item.title || item.name || "Product",
+    variation_name: item.variation_name ?? item.variant_name ?? null,
+    quantity,
+    minimum_order_quantity:
+      item.min_order_qty_wholesale ?? item.min_order_qty_retail ?? null,
+    min_order_quantity:
+      item.min_order_qty_wholesale ?? item.min_order_qty_retail ?? null,
+    price: effectivePrice,
+    compare_at_price: item.compare_at_price ?? null,
+    original_price:
+      originalAmount > effectiveAmount ? originalPrice : item.original_price ?? null,
+    discounted_price:
+      originalAmount > effectiveAmount
+        ? item.discounted_price ?? item.sale_price ?? item.final_price ?? effectivePrice
+        : null,
+    discount_percentage: discountPercentage,
+    subtotal:
+      item.final_subtotal ??
+      item.line_total ??
+      item.subtotal ??
+      Number(effectivePrice ?? 0) * Number(quantity ?? 0),
+    stock: item.stock ?? availableStock,
+    available_stock: availableStock,
+    status,
+    is_out_of_stock: isOutOfStock,
+    stock_status: stockStatus,
+    image: item.image ?? null,
   };
 };
 
@@ -295,8 +327,9 @@ const normalizeCartResponse = (response: CartApiResponse): CartResponse => {
 };
 
 const addSingleCartItem = async (
-  item: CartAddItem,
-  couponCode?: string,
+  item?: CartAddItem,
+  couponCode?: string | null,
+  email?: string,
 ): Promise<CartAddResponse> => {
   const isWholesaler = getApiAudience() === "wholesaler";
   const response = await apiRequest<CartApiResponse>(
@@ -304,15 +337,19 @@ const addSingleCartItem = async (
     {
       method: "POST",
       body: {
-        product_id: item.product_id,
-        variant_id: item.variation_id,
-        quantity: item.quantity,
-        coupon_code: couponCode,
-        ...(isWholesaler ? {} : { email: item.email }),
+        ...(item
+          ? {
+              product_id: item.product_id,
+              variant_id: item.variation_id,
+              quantity: item.quantity,
+            }
+          : {}),
+        ...(couponCode !== undefined ? { coupon_code: couponCode } : {}),
+        ...(isWholesaler ? {} : { email: email ?? item?.email }),
       },
     },
   );
-
+  console.log(response)
   const normalized = normalizeCartResponse(response);
 
   return {
@@ -336,9 +373,15 @@ export const getCart = async () =>
   );
 
 export const addToCart = async (payload: CartAddPayload) => {
+  const normalizedItems = payload.items || [];
+  const hasCouponUpdate = payload.coupon_code !== undefined;
   let latestResponse: CartAddResponse | null = null;
 
-  for (const item of payload.items) {
+  if (!normalizedItems.length && hasCouponUpdate) {
+    return addSingleCartItem(undefined, payload.coupon_code, payload.email);
+  }
+
+  for (const item of normalizedItems) {
     latestResponse = await addSingleCartItem({
       ...item,
       email: item.email ?? payload.email,

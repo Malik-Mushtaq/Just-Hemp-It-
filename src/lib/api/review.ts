@@ -1,7 +1,7 @@
 import { apiRequest } from "@/lib/api/client";
 
 export interface AddReviewPayload {
-  product_id: number;
+  product_id: string | number;
   user_name: string;
   rating: number;
   review_text?: string;
@@ -9,7 +9,7 @@ export interface AddReviewPayload {
 
 export interface ProductReview {
   review_id: number;
-  product_id: number;
+  product_id: string | number;
   user_id: number;
   user_name: string;
   rating: number;
@@ -43,7 +43,7 @@ export const addReview = (payload: AddReviewPayload) =>
   });
 
 export const getProductReviews = (
-  productId: number,
+  productId: string | number,
   params: GetProductReviewsParams = {},
 ) => {
   const searchParams = new URLSearchParams();

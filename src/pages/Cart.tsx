@@ -17,13 +17,12 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import PageTransition from "@/components/PageTransition";
 import { getCart, addToCart } from "@/lib/api/cart";
-import { applyCoupon } from "@/lib/api/coupon";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { ApiError } from "@/lib/api/client";
 import { formatGBP, formatGBPFromUnknown } from "@/lib/currency";
 import { getGuestToken } from "@/lib/guestSession";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 const CouponSchema = z.object({
   coupon_code: z
@@ -38,12 +37,6 @@ const CouponSchema = z.object({
 });
 
 type CouponFormValues = z.infer<typeof CouponSchema>;
-
-type AppliedCouponState = {
-  code: string;
-  discountAmount: number;
-  discountedSubtotal: number;
-};
 
 const getKnownStockLimit = (value: unknown) => {
   const numericValue = Number(value);
@@ -94,37 +87,12 @@ const CartPage = () => {
       coupon_code: "",
     },
   });
-  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCouponState | null>(
-    null,
-  );
 
   const cartQuery = useQuery({
     queryKey: ["cart"],
     queryFn: getCart,
     enabled: hasAccessToken,
     retry: 1,
-  });
-
-  const applyCouponMutation = useMutation({
-    mutationFn: applyCoupon,
-    onError: (error) => {
-      setAppliedCoupon(null);
-
-      if (error instanceof ApiError) {
-        toast({
-          title: "Coupon failed",
-          description: error.message || "Failed to apply coupon",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      toast({
-        title: "Coupon failed",
-        description: "An unexpected error occurred",
-        variant: "destructive",
-      });
-    },
   });
 
   const addToCartMutation = useMutation({
@@ -159,40 +127,6 @@ const CartPage = () => {
         description,
         variant: couponFeedback ? "destructive" : "default",
       });
-
-      const nextSubtotal =
-        parseFloat(String(response?.subtotal ?? 0)) || 0;
-
-      if (appliedCoupon?.code && nextSubtotal > 0) {
-        applyCouponMutation.mutate(
-          {
-            code: appliedCoupon.code,
-            subtotal: nextSubtotal,
-          },
-          {
-            onSuccess: (couponResponse) => {
-              const discountAmount =
-                Number(
-                  couponResponse.data?.discount_amount ??
-                    couponResponse.discount_amount ??
-                    0,
-                ) || 0;
-              const discountedSubtotal =
-                Number(
-                  couponResponse.data?.final_total ??
-                    couponResponse.final_subtotal ??
-                    nextSubtotal,
-                ) || nextSubtotal;
-
-              setAppliedCoupon({
-                code: couponResponse.data?.coupon_code || appliedCoupon.code,
-                discountAmount,
-                discountedSubtotal,
-              });
-            },
-          },
-        );
-      }
     },
     onError: (error) => {
       if (error instanceof ApiError) {
@@ -213,7 +147,6 @@ const CartPage = () => {
 
   useEffect(() => {
     if ((cartQuery.data?.cart_items || []).length === 0) {
-      setAppliedCoupon(null);
       reset({ coupon_code: "" });
     }
   }, [cartQuery.data?.cart_items, reset]);
@@ -299,46 +232,35 @@ const CartPage = () => {
   const backendFinalTotal =
     parseFloat(String(cartData?.final_total ?? 0)) || 0;
   const subtotal = rawSubtotal;
-  const discountAmount =
-    appliedCoupon?.discountAmount ??
-    (parseFloat(String(cartData?.discount_amount ?? 0)) || 0);
-  const discountedSubtotal =
-    appliedCoupon?.discountedSubtotal ??
-    Math.max(0, rawSubtotal - discountAmount);
-  const finalTotal = discountedSubtotal + shippingFee;
-  const appliedCouponCode = appliedCoupon?.code ?? cartData?.applied_coupon ?? null;
+  const discountAmount = parseFloat(String(cartData?.discount_amount ?? 0)) || 0;
+  const finalTotal = backendFinalTotal || Math.max(0, subtotal - discountAmount) + shippingFee;
+  const appliedCouponCode =
+    typeof cartData?.applied_coupon === "string" &&
+    cartData.applied_coupon.trim().length
+      ? cartData.applied_coupon.trim()
+      : null;
 
-  const toCartPayloadItems = (
-    quantityResolver?: (item: (typeof items)[number]) => number,
-  ) =>
-    items
-      .map((item) => {
-        const productId = toEntityId(item.product_id);
-        const variationId = toEntityId(item.variation_id);
-        const resolvedQuantity = quantityResolver
-          ? quantityResolver(item)
-          : Number(item.quantity);
-        const quantity = toNonNegativeInteger(resolvedQuantity);
+  const getCouponCartPayload = (couponCode: string | null) => {
+    const firstItem = items[0];
+    const productId = toEntityId(firstItem?.product_id);
+    const variationId = toEntityId(firstItem?.variation_id);
+    const quantity = toNonNegativeInteger(firstItem?.quantity);
 
-        if (!productId || !variationId || quantity === null) {
-          return null;
-        }
+    if (!productId || !variationId || quantity === null) {
+      return null;
+    }
 
-        return {
+    return {
+      coupon_code: couponCode ?? "",
+      items: [
+        {
           product_id: productId,
           variation_id: variationId,
           quantity,
-        };
-      })
-      .filter(
-        (
-          item,
-        ): item is {
-          product_id: string | number;
-          variation_id: string | number;
-          quantity: number;
-        } => item !== null,
-      );
+        },
+      ],
+    };
+  };
 
   const handleUpdateQuantity = (
     productId: string | number,
@@ -357,14 +279,11 @@ const CartPage = () => {
       return;
     }
 
-    // Set quantity to 0 for the deleted item; backend skips 0-qty items
-    const payloadItems = toCartPayloadItems((item) =>
-      item.product_id === productId && item.variation_id === variationId
-        ? Math.max(0, newQuantity)
-        : Number(item.quantity),
-    );
+    const normalizedProductId = toEntityId(productId);
+    const normalizedVariationId = toEntityId(variationId);
+    const quantity = toNonNegativeInteger(Math.max(0, newQuantity));
 
-    if (!payloadItems.length) {
+    if (!normalizedProductId || !normalizedVariationId || quantity === null) {
       toast({
         title: "Cart update failed",
         description: "No valid product variation found to update the cart.",
@@ -374,7 +293,13 @@ const CartPage = () => {
     }
 
     addToCartMutation.mutate({
-      items: payloadItems,
+      items: [
+        {
+          product_id: normalizedProductId,
+          variation_id: normalizedVariationId,
+          quantity,
+        },
+      ],
     });
   };
 
@@ -389,44 +314,35 @@ const CartPage = () => {
     }
 
     const couponCode = values.coupon_code.trim();
+    const payload = getCouponCartPayload(couponCode);
 
-    applyCouponMutation.mutate(
-      {
-        code: couponCode,
-        subtotal,
-      },
-      {
-        onSuccess: (response) => {
-          const discount =
-            Number(response.data?.discount_amount ?? response.discount_amount ?? 0) ||
-            0;
-          const nextSubtotal =
-            Number(response.data?.final_total ?? response.final_subtotal ?? subtotal) ||
-            subtotal;
-          const resolvedCode =
-            response.data?.coupon_code ||
-            response.coupon?.code ||
-            couponCode;
+    if (!payload) {
+      toast({
+        title: "Coupon failed",
+        description: "No valid cart item was found for this coupon update.",
+        variant: "destructive",
+      });
+      return;
+    }
 
-          setAppliedCoupon({
-            code: resolvedCode,
-            discountAmount: discount,
-            discountedSubtotal: nextSubtotal,
-          });
-
-          reset({ coupon_code: "" });
-          toast({
-            title: "Coupon applied",
-            description: response.message || response.msg || "Coupon applied successfully.",
-          });
-        },
-      },
-    );
+    addToCartMutation.mutate(payload);
+    reset({ coupon_code: "" });
   });
 
   const handleRemoveCoupon = () => {
-    setAppliedCoupon(null);
+    const payload = getCouponCartPayload("");
+
+    if (!payload) {
+      toast({
+        title: "Coupon failed",
+        description: "No valid cart item was found for this coupon update.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     reset({ coupon_code: "" });
+    addToCartMutation.mutate(payload);
   };
 
   return (
@@ -583,14 +499,10 @@ const CartPage = () => {
                               size="sm"
                               onClick={handleRemoveCoupon}
                               disabled={
-                                addToCartMutation.isPending ||
-                                applyCouponMutation.isPending
+                                addToCartMutation.isPending
                               }
                             >
-                              {addToCartMutation.isPending ||
-                              applyCouponMutation.isPending
-                                ? "..."
-                                : "Remove"}
+                              {addToCartMutation.isPending ? "..." : "Remove"}
                             </Button>
                           </>
                         ) : (
@@ -604,8 +516,7 @@ const CartPage = () => {
                               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                               {...register("coupon_code")}
                               disabled={
-                                addToCartMutation.isPending ||
-                                applyCouponMutation.isPending
+                                addToCartMutation.isPending
                               }
                             />
                             <Button
@@ -614,11 +525,10 @@ const CartPage = () => {
                               size="sm"
                               disabled={
                                 addToCartMutation.isPending ||
-                                applyCouponMutation.isPending ||
                                 !items.length
                               }
                             >
-                              {applyCouponMutation.isPending
+                              {addToCartMutation.isPending
                                 ? "Applying..."
                                 : "Apply"}
                             </Button>
