@@ -106,6 +106,9 @@ const toTabValue = (label: string) =>
 const UUID_LIKE_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+const isUuidLike = (value: unknown) =>
+  typeof value === "string" && UUID_LIKE_PATTERN.test(value);
+
 const ProductDetail = () => {
   const { id } = useParams();
   const { addItem, addItems, isUpdating } = useCart();
@@ -184,6 +187,22 @@ const ProductDetail = () => {
     return ordered.slice(0, 6);
   }, [product, productsQuery.data?.products]);
 
+  const reviewProductId = useMemo(() => {
+    if (isUuidLike(id)) {
+      return id;
+    }
+
+    if (isUuidLike(product?.product_id)) {
+      return product.product_id;
+    }
+
+    if (typeof product?.id === "string" && isUuidLike(product.id)) {
+      return product.id;
+    }
+
+    return null;
+  }, [id, product?.id, product?.product_id]);
+
   useEffect(() => {
     setVariationQuantities({});
     setSelectedImage(0);
@@ -220,16 +239,16 @@ const ProductDetail = () => {
     queryKey: [
       "reviews",
       "product",
-      product?.id,
+      reviewProductId,
       reviewsPage,
       REVIEWS_PAGE_SIZE,
     ],
     queryFn: () =>
-      getProductReviews(product!.id, {
+      getProductReviews(reviewProductId!, {
         page: reviewsPage,
         limit: REVIEWS_PAGE_SIZE,
       }),
-    enabled: Boolean(product?.id),
+    enabled: Boolean(reviewProductId),
     retry: 1,
   });
 
@@ -279,7 +298,7 @@ const ProductDetail = () => {
 
       setReviewsPage(1);
       void queryClient.invalidateQueries({
-        queryKey: ["reviews", "product", product?.id],
+        queryKey: ["reviews", "product", reviewProductId],
       });
       void queryClient.invalidateQueries({ queryKey: ["products"] });
     },
@@ -315,8 +334,17 @@ const ProductDetail = () => {
       return;
     }
 
+    if (!reviewProductId) {
+      toast({
+        title: "Product review unavailable",
+        description: "We could not determine the review product ID.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     addReviewMutation.mutate({
-      product_id: product.id,
+      product_id: reviewProductId,
       user_name: values.user_name.trim(),
       rating: values.rating,
       review_text: values.review_text?.trim() || undefined,
@@ -1064,7 +1092,19 @@ const ProductDetail = () => {
                       </p>
                     ) : null}
 
-                    {!reviewsQuery.isLoading && !reviewItems.length ? (
+                    {!reviewsQuery.isLoading &&
+                    !reviewsQuery.isError &&
+                    !reviewProductId ? (
+                      <p className="text-sm text-muted-foreground">
+                        Reviews are available once this product is opened with
+                        its backend UUID.
+                      </p>
+                    ) : null}
+
+                    {!reviewsQuery.isLoading &&
+                    !reviewsQuery.isError &&
+                    reviewProductId &&
+                    !reviewItems.length ? (
                       <p className="text-sm text-muted-foreground">
                         No reviews yet. Be the first to review this product.
                       </p>
@@ -1166,6 +1206,7 @@ const ProductDetail = () => {
 
                   return {
                     id: item.id,
+                    productId: item.product_id,
                     variationId: relatedDefaultVariation?.variation_id,
                     variationLabel: relatedDefaultVariation?.variation_name,
                     name: item.product_name,

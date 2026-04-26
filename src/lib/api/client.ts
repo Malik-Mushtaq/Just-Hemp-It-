@@ -1,6 +1,6 @@
 import { isDemoToken } from "@/lib/authAudience";
 
-const DEFAULT_API_BASE_URL = "https://justhempit.vercel.app";
+const DEFAULT_API_BASE_URL = "https://backend.justhempit.co.uk";
 
 export const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL
@@ -135,6 +135,18 @@ const resolveAuthToken = (requestToken: string | null | undefined) => {
 
 const normalizeErrorResponse = (payload: unknown) => {
   if (typeof payload === "string" && payload.trim()) {
+    const routeMissMatch = payload.match(/Cannot (GET|POST|PUT|PATCH|DELETE) ([^<\s]+)/i);
+
+    if (routeMissMatch) {
+      const [, method, path] = routeMissMatch;
+
+      return {
+        message: `Backend route unavailable: ${method.toUpperCase()} ${path}`,
+        fieldErrors: {},
+        details: payload,
+      };
+    }
+
     return {
       message: payload,
       fieldErrors: {},

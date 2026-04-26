@@ -69,7 +69,9 @@ const toProductSlug = (name: string) =>
     .replace(/[^a-z0-9-]/g, "");
 
 const getProductDetailPath = (product: ProductItem) =>
-  `/product/${encodeURIComponent(String(product.id || toProductSlug(product.product_name)))}`;
+  `/product/${encodeURIComponent(
+    String(product.product_id || product.id || toProductSlug(product.product_name)),
+  )}`;
 
 const getBlogDetailPath = (blog: BlogItem) =>
   `/blog/${encodeURIComponent(blog.slug)}`;

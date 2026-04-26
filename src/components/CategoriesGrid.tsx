@@ -35,8 +35,14 @@ const toSlug = (name: string) =>
     .replace(/\s+/g, "-")
     .replace(/[^a-z0-9-]/g, "");
 
-const getProductPath = (product: { id: string | number; product_name: string }) =>
-  `/product/${encodeURIComponent(String(product.id || toSlug(product.product_name)))}`;
+const getProductPath = (product: {
+  id: string | number;
+  product_id?: string;
+  product_name: string;
+}) =>
+  `/product/${encodeURIComponent(
+    String(product.product_id || product.id || toSlug(product.product_name)),
+  )}`;
 
 const getCategoryBrowsePath = (categoryName: string) =>
   `/products?category=${encodeURIComponent(categoryName)}`;

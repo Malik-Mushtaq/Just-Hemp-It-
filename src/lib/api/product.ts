@@ -30,6 +30,7 @@ export interface ProductReview {
 
 export interface ProductItem {
   id: string | number;
+  product_id?: string;
   slug: string;
   product_name: string;
   price: number;
@@ -104,6 +105,7 @@ type ProductVariantApi = {
 
 type ProductApi = {
   id?: number | string;
+  product_id?: number | string;
   slug?: string;
   title?: string;
   name?: string;
@@ -217,7 +219,13 @@ const normalizeProduct = (product: ProductApi, index: number): ProductItem => {
     1;
 
   return {
-    id: parseEntityId(product.id, index + 1),
+    id: parseEntityId(product.id ?? product.product_id, index + 1),
+    product_id:
+      typeof product.product_id === "string"
+        ? product.product_id.trim() || undefined
+        : typeof product.id === "string"
+          ? product.id.trim() || undefined
+          : undefined,
     slug: product.slug || toSlug(productName),
     product_name: productName,
     price: parseAmount(

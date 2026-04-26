@@ -62,7 +62,12 @@ type ProfileEnvelopeUser = {
   last_name?: string | null;
   email?: string;
   phone?: string | null;
+  date_of_birth?: string | null;
+  gender?: string | null;
   role?: string;
+  approval_status?: string | null;
+  is_active?: boolean | null;
+  approved_at?: string | null;
   created_at?: string;
   updated_at?: string | null;
 };
@@ -114,6 +119,8 @@ const normalizeProfileUser = (
     latitude: shipping?.latitude ?? undefined,
     longitude: shipping?.longitude ?? undefined,
     w3w_address: shipping?.w3w_words || "",
+    date_of_birth: user?.date_of_birth || "",
+    gender: user?.gender || "",
     role: user?.role || "retailer",
     created_at: user?.created_at,
     updated_at: user?.updated_at || undefined,
@@ -124,6 +131,8 @@ const toProfileUpdateRequest = (payload: UpdateProfilePayload) => ({
   first_name: payload.first_name,
   last_name: payload.last_name,
   phone: payload.phone,
+  date_of_birth: payload.date_of_birth,
+  gender: payload.gender,
   address1: payload.address1 ?? payload.street1,
   address2: payload.address2 ?? payload.street1Nr,
   city: payload.city,
@@ -153,10 +162,15 @@ export const formatProfileDateForInput = (value?: string | null) => {
 };
 
 export const updateProfile = async (payload: UpdateProfilePayload) => {
+  console.log("[profile:update] payload", payload);
+  console.log("[profile:update] request", toProfileUpdateRequest(payload));
+
   const response = await apiRequest<ProfileEnvelope>("/api/user/update-profile", {
     method: "PATCH",
     body: toProfileUpdateRequest(payload),
   });
+
+  console.log("[profile:update] response", response);
 
   return {
     message: response.message || "Profile updated successfully.",
@@ -168,6 +182,9 @@ export const getUserProfile = async (_userId?: number | string) => {
   const response = await apiRequest<ProfileEnvelope>("/api/user/profile", {
     method: "GET",
   });
+
+  console.log("[profile:get] raw response", response);
+  console.log("[profile:get] normalized user", normalizeProfileUser(response.data));
 
   return {
     user: normalizeProfileUser(response.data),

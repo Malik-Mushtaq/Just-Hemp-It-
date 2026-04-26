@@ -77,6 +77,21 @@ const DashboardProfile = () => {
 
   useEffect(() => {
     if (profileUser) {
+      console.log("[dashboard-profile] profileUser", profileUser);
+      console.log("[dashboard-profile] reset values", {
+        first_name: profileUser.first_name || "",
+        last_name: profileUser.last_name || "",
+        phone: profileUser.phone || "",
+        date_of_birth: formatProfileDateForInput(profileUser.date_of_birth),
+        gender:
+          (profileUser.gender as "male" | "female" | "other") || undefined,
+        street1: profileUser.street1 || "",
+        street1Nr: profileUser.street1nr || "",
+        postcode: profileUser.postcode || "",
+        city: profileUser.city || "",
+        country: profileUser.country || "",
+      });
+
       reset({
         first_name: profileUser.first_name || "",
         last_name: profileUser.last_name || "",

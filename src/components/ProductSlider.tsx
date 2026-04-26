@@ -15,6 +15,7 @@ const toSlug = (name: string) =>
 
 interface Product {
   id?: string | number;
+  productId?: string;
   variationId?: string | number;
   variationLabel?: string;
   name: string;
@@ -25,6 +26,11 @@ interface Product {
   rating: number;
   image?: string;
 }
+
+const getProductPath = (product: Product) =>
+  `/product/${encodeURIComponent(
+    String(product.productId || product.id || toSlug(product.name)),
+  )}`;
 
 interface ProductSliderProps {
   title: string;
@@ -112,7 +118,7 @@ const ProductSlider = ({
                   key={p.id || i}
                   className="snap-start shrink-0 w-[260px] bg-card rounded-xl border shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300 overflow-hidden group"
                 >
-                  <Link to={`/product/${encodeURIComponent(String(p.id || toSlug(p.name)))}`}>
+                  <Link to={getProductPath(p)}>
                     <div className="h-52 bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center overflow-hidden">
                       {p.image ? (
                         <img
@@ -128,7 +134,7 @@ const ProductSlider = ({
                     </div>
                   </Link>
                   <div className="p-4 space-y-2">
-                    <Link to={`/product/${encodeURIComponent(String(p.id || toSlug(p.name)))}`}>
+                    <Link to={getProductPath(p)}>
                       <h3 className="font-semibold text-sm truncate hover:text-primary transition-colors">
                         {p.name}
                       </h3>
