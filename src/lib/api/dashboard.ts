@@ -54,10 +54,43 @@ type DashboardApiOrder = {
   status?: string;
   total?: number;
   total_amount?: number;
+  grand_total?: number;
+  final_total?: number;
   created_at?: string;
+  date?: string;
+  placed_at?: string;
+  items_count?: number;
   items?: Array<{
     product_id?: string | number;
     variant_id?: string | number;
+    variation_id?: string | number;
+    quantity?: number;
+    price?: number;
+    product_name?: string;
+    variation_name?: string;
+  }>;
+  products?: Array<{
+    product_id?: string | number;
+    variant_id?: string | number;
+    variation_id?: string | number;
+    quantity?: number;
+    price?: number;
+    product_name?: string;
+    variation_name?: string;
+  }>;
+  order_items?: Array<{
+    product_id?: string | number;
+    variant_id?: string | number;
+    variation_id?: string | number;
+    quantity?: number;
+    price?: number;
+    product_name?: string;
+    variation_name?: string;
+  }>;
+  line_items?: Array<{
+    product_id?: string | number;
+    variant_id?: string | number;
+    variation_id?: string | number;
     quantity?: number;
     price?: number;
     product_name?: string;
@@ -71,12 +104,30 @@ type DashboardApiResponse = {
     total_spent?: number;
     last_order_at?: string | null;
   };
+  total_orders?: number;
+  total_spent?: number;
+  last_order_at?: string | null;
   recent_orders?: DashboardApiOrder[];
 };
 
 type OrderHistoryApiResponse = {
   orders?: DashboardApiOrder[];
+  page?: number;
+  limit?: number;
+  total?: number;
+  totalPages?: number;
+  total_pages?: number;
+  message?: string;
+  msg?: string;
 };
+
+const toAmount = (value: unknown) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+};
+
+const getOrderItems = (order: DashboardApiOrder) =>
+  order.items ?? order.products ?? order.order_items ?? order.line_items ?? [];
 
 const formatDisplayDate = (value?: string | null) => {
   if (!value) {
@@ -96,24 +147,35 @@ const formatDisplayDate = (value?: string | null) => {
   });
 };
 
-const normalizeOrder = (order: DashboardApiOrder): OrderHistoryItem => ({
-  order_id:
-    order.order_id ||
-    order.id ||
-    (order.order_number ? `#${order.order_number}` : "Order"),
-  status: order.status || "Pending",
-  date: formatDisplayDate(order.created_at),
-  items_count: order.items?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0,
-  products: (order.items || []).map((item) => ({
+const normalizeOrder = (order: DashboardApiOrder): OrderHistoryItem => {
+  const orderItems = getOrderItems(order);
+  const normalizedProducts = orderItems.map((item) => ({
     product_id: item.product_id ?? "",
-    variation_id: item.variant_id ?? "",
+    variation_id: item.variant_id ?? item.variation_id ?? "",
     product_name: item.product_name || "Product",
     variation_name: item.variation_name || "",
-    quantity: item.quantity || 0,
-    price: item.price || 0,
-  })),
-  total: order.total_amount ?? order.total ?? 0,
-});
+    quantity: toAmount(item.quantity),
+    price: toAmount(item.price),
+  }));
+
+  const itemCount =
+    toAmount(order.items_count) ||
+    normalizedProducts.reduce((sum, item) => sum + item.quantity, 0);
+
+  return {
+    order_id:
+      order.order_id ||
+      order.id ||
+      (order.order_number ? `#${order.order_number}` : "Order"),
+    status: order.status || "Pending",
+    date: formatDisplayDate(order.created_at ?? order.placed_at ?? order.date),
+    items_count: itemCount,
+    products: normalizedProducts,
+    total: toAmount(
+      order.total_amount ?? order.final_total ?? order.grand_total ?? order.total,
+    ),
+  };
+};
 
 export const getDashboard = async () => {
   const response = await apiRequest<DashboardApiResponse>(
@@ -138,8 +200,8 @@ export const getDashboard = async () => {
   });
 
   return {
-    total_orders: response.stats?.total_orders ?? 0,
-    total_spent: response.stats?.total_spent ?? 0,
+    total_orders: response.stats?.total_orders ?? response.total_orders ?? 0,
+    total_spent: response.stats?.total_spent ?? response.total_spent ?? 0,
     recent_order: recentOrders[0]?.order_id || null,
     recent_orders: recentOrders,
   };
@@ -171,11 +233,14 @@ export const getOrderHistory = async (params: OrderHistoryParams = {}) => {
   );
 
   return {
-    msg: "Order history loaded successfully.",
-    page: params.page || 1,
-    limit: params.limit || response.orders?.length || 0,
-    total: response.orders?.length || 0,
-    totalPages: 1,
+    msg:
+      response.msg ||
+      response.message ||
+      "Order history loaded successfully.",
+    page: response.page ?? params.page ?? 1,
+    limit: response.limit ?? params.limit ?? response.orders?.length ?? 0,
+    total: response.total ?? response.orders?.length ?? 0,
+    totalPages: response.totalPages ?? response.total_pages ?? 1,
     orders: (response.orders || []).map(normalizeOrder),
   };
 };

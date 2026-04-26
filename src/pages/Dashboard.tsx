@@ -1,4 +1,4 @@
-import { ReactNode, useMemo, useState } from "react";
+import { ReactNode, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "react-router-dom";
 import {
@@ -19,9 +19,11 @@ import AnnouncementBar from "@/components/AnnouncementBar";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { useAuth } from "@/context/AuthContext";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { isDemoUser } from "@/lib/authAudience";
 import { ApiError } from "@/lib/api/client";
 import { getDashboard } from "@/lib/api/dashboard";
+import { formatGBP } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 
 const sidebarLinks = [
@@ -31,13 +33,6 @@ const sidebarLinks = [
   { label: "Payment Methods", href: "/dashboard/payments", icon: CreditCard },
   { label: "Change Password", href: "/dashboard/password", icon: KeyRound },
 ];
-
-const formatCurrency = (value: number) =>
-  new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-  }).format(Number.isFinite(value) ? value : 0);
 
 const getStatusClassName = (status: string) => {
   const normalizedStatus = status.toLowerCase();
@@ -79,14 +74,14 @@ export const DashboardHero = ({
   title: string;
   description: string;
 }) => (
-  <section className="rounded-[28px] bg-gradient-to-r from-[#6d5421] via-[#6c7e34] to-[#95ad3e] px-6 py-7 text-[#fbf6ea] shadow-[0_30px_80px_-45px_rgba(88,69,29,0.45)] sm:px-8 sm:py-9 lg:px-10">
-    <span className="inline-flex rounded-full border border-white/25 bg-white/8 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-[0.3em] text-[#f4ecd7]">
+  <section className="rounded-[24px] bg-gradient-to-r from-[#6d5421] via-[#6c7e34] to-[#95ad3e] px-4 py-5 text-[#fbf6ea] shadow-[0_30px_80px_-45px_rgba(88,69,29,0.45)] sm:rounded-[28px] sm:px-8 sm:py-9 lg:px-10">
+    <span className="inline-flex rounded-full border border-white/25 bg-white/8 px-3 py-1.5 text-[9px] font-semibold uppercase tracking-[0.24em] text-[#f4ecd7] sm:px-4 sm:text-[10px] sm:tracking-[0.3em]">
       {eyebrow}
     </span>
-    <h1 className="mt-4 text-[clamp(2rem,5vw,3rem)] font-bold leading-[1.02] tracking-[-0.04em] text-[#fcf7eb]">
+    <h1 className="mt-3 text-[clamp(1.8rem,8vw,3rem)] font-bold leading-[1.02] tracking-[-0.04em] text-[#fcf7eb] sm:mt-4">
       {title}
     </h1>
-    <p className="mt-4 max-w-3xl text-sm leading-7 text-[#f3ead8] sm:text-base">
+    <p className="mt-3 max-w-3xl text-sm leading-6 text-[#f3ead8] sm:mt-4 sm:text-base sm:leading-7">
       {description}
     </p>
   </section>
@@ -101,7 +96,7 @@ export const DashboardPanel = ({
 }) => (
   <section
     className={cn(
-      "rounded-[28px] border border-[#e1d2ba] bg-[#fffdf7] p-5 shadow-[0_28px_80px_-55px_rgba(88,69,29,0.38)] sm:p-6",
+      "rounded-[24px] border border-[#e1d2ba] bg-[#fffdf7] p-4 shadow-[0_28px_80px_-55px_rgba(88,69,29,0.38)] sm:rounded-[28px] sm:p-6",
       className,
     )}
   >
@@ -122,7 +117,7 @@ export const DashboardStatCard = ({
   icon: typeof Package;
   valueClassName?: string;
 }) => (
-  <div className="rounded-[26px] border border-[#eadcc7] bg-[#fffdf7] p-5 shadow-[0_20px_55px_-45px_rgba(88,69,29,0.35)]">
+  <div className="rounded-[22px] border border-[#eadcc7] bg-[#fffdf7] p-4 shadow-[0_20px_55px_-45px_rgba(88,69,29,0.35)] sm:rounded-[26px] sm:p-5">
     <div className="flex items-start justify-between gap-4">
       <div>
         <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[#84725f]">
@@ -130,15 +125,17 @@ export const DashboardStatCard = ({
         </p>
         <p
           className={cn(
-            "mt-3 text-[2rem] font-medium leading-none text-[#453526]",
+            "mt-2 text-[1.7rem] font-medium leading-none text-[#453526] sm:mt-3 sm:text-[2rem]",
             valueClassName,
           )}
         >
           {value}
         </p>
-        <p className="mt-3 text-sm leading-6 text-[#7a6856]">{description}</p>
+        <p className="mt-2 text-sm leading-6 text-[#7a6856] sm:mt-3">
+          {description}
+        </p>
       </div>
-      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] bg-[#eff0e4] text-[#73854b]">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-[#eff0e4] text-[#73854b] sm:h-11 sm:w-11 sm:rounded-[16px]">
         <Icon className="h-5 w-5" />
       </div>
     </div>
@@ -148,43 +145,162 @@ export const DashboardStatCard = ({
 const DashboardLayout = ({ children }: { children: ReactNode }) => {
   const location = useLocation();
   const { user, logout } = useAuth();
+  const isMobile = useIsMobile();
   const [mobileOpen, setMobileOpen] = useState(false);
   const displayName = getDashboardDisplayName(user);
+  const activeLink =
+    sidebarLinks.find((link) => location.pathname === link.href) ||
+    sidebarLinks[0];
 
   const handleLogout = () => {
     setMobileOpen(false);
     logout({ reason: "manual" });
   };
 
+  if (isMobile) {
+    return (
+      <div className="min-h-screen bg-background">
+        <AnnouncementBar />
+        <Navbar />
+        <main className="px-3 py-4">
+          <div className="mx-auto max-w-md space-y-4">
+            <section className="rounded-[24px] border border-[#dccdaf] bg-[#f6f0e4] p-3 shadow-[0_30px_70px_-52px_rgba(88,69,29,0.45)]">
+              <div className="flex items-center justify-between gap-3 rounded-[20px] bg-[#fffdf8] px-3 py-3 shadow-[0_18px_36px_-30px_rgba(88,69,29,0.26)]">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#8c7964]">
+                    Account
+                  </p>
+                  <p className="mt-1 truncate text-sm font-semibold text-[#453526]">
+                    {activeLink.label}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#6b8440] text-white shadow-[0_18px_38px_-18px_rgba(107,132,64,0.85)]"
+                  onClick={() => setMobileOpen(true)}
+                  aria-label="Open dashboard menu"
+                >
+                  <Menu className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="mt-3 rounded-[22px] bg-gradient-to-r from-[#6c5421] via-[#6f7f35] to-[#94ac3d] px-4 py-4 text-[#fcf7eb] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#f3ebd6]">
+                  {displayName}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-[#f7efde]">
+                  Manage orders, profile details, payments, and security from a mobile-first dashboard.
+                </p>
+              </div>
+
+              <div className="-mx-1 mt-3 overflow-x-auto pb-1">
+                <div className="flex min-w-max gap-2 px-1">
+                  {sidebarLinks.map((link) => {
+                    const isActive = location.pathname === link.href;
+
+                    return (
+                      <Link
+                        key={link.href}
+                        to={link.href}
+                        className={cn(
+                          "inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium whitespace-nowrap transition-colors",
+                          isActive
+                            ? "border-[#6b8440] bg-[#6b8440] text-white shadow-[0_16px_34px_-22px_rgba(107,132,64,0.8)]"
+                            : "border-[#dccdaf] bg-[#fffdf8] text-[#5f5244]",
+                        )}
+                      >
+                        <link.icon className="h-3.5 w-3.5" />
+                        {link.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+
+            <div className="space-y-4">{children}</div>
+          </div>
+        </main>
+
+        {mobileOpen ? (
+          <>
+            <button
+              type="button"
+              aria-label="Close dashboard menu overlay"
+              className="fixed inset-0 z-40 bg-[#2f261d]/40 backdrop-blur-[2px]"
+              onClick={() => setMobileOpen(false)}
+            />
+            <aside className="fixed inset-y-0 right-0 z-50 flex w-[86vw] max-w-[320px] flex-col bg-[#fffdf8] p-4 shadow-[-22px_0_60px_-28px_rgba(47,38,29,0.48)]">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#8c7964]">
+                    Dashboard Menu
+                  </p>
+                  <p className="mt-1 truncate text-base font-semibold text-[#453526]">
+                    {displayName}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#f2eadb] text-[#5f5244]"
+                  onClick={() => setMobileOpen(false)}
+                  aria-label="Close dashboard menu"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <nav className="mt-5 space-y-2">
+                {sidebarLinks.map((link) => {
+                  const isActive = location.pathname === link.href;
+
+                  return (
+                    <Link
+                      key={link.href}
+                      to={link.href}
+                      onClick={() => setMobileOpen(false)}
+                      className={cn(
+                        "flex items-center gap-3 rounded-[16px] px-4 py-3 text-sm font-medium transition-colors",
+                        isActive
+                          ? "bg-[#6b8440] text-white shadow-[0_16px_34px_-22px_rgba(107,132,64,0.8)]"
+                          : "bg-[#faf5eb] text-[#5f5244]",
+                      )}
+                    >
+                      <link.icon className="h-4 w-4" />
+                      {link.label}
+                    </Link>
+                  );
+                })}
+              </nav>
+
+              <button
+                type="button"
+                className="mt-auto flex w-full items-center justify-center gap-2 rounded-[16px] border border-[#f2c9c3] bg-[#fff4f1] px-4 py-3 text-sm font-medium text-[#ff3d37]"
+                onClick={handleLogout}
+              >
+                <LogOut className="h-4 w-4" />
+                Logout
+              </button>
+            </aside>
+          </>
+        ) : null}
+
+        <Footer />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <AnnouncementBar />
       <Navbar />
-      <main className="overflow-hidden px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+      <main className="overflow-hidden px-6 py-8 lg:px-8 lg:py-10">
         <div className="mx-auto max-w-[1380px]">
-          <div className="relative overflow-hidden rounded-[34px] border border-[#dccdaf] bg-[#f6f0e4] p-4 shadow-[0_35px_95px_-60px_rgba(88,69,29,0.5)] sm:p-5 lg:p-6">
+          <div className="relative overflow-hidden rounded-[34px] border border-[#dccdaf] bg-[#f6f0e4] p-5 shadow-[0_35px_95px_-60px_rgba(88,69,29,0.5)] lg:p-6">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.95),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(151,169,75,0.18),transparent_30%)]" />
             <div className="relative grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]">
-              <button
-                type="button"
-                className="fixed bottom-4 right-4 z-50 rounded-full bg-[#6b8440] p-3 text-white shadow-lg lg:hidden"
-                onClick={() => setMobileOpen((previous) => !previous)}
-              >
-                {mobileOpen ? (
-                  <X className="h-5 w-5" />
-                ) : (
-                  <Menu className="h-5 w-5" />
-                )}
-              </button>
-
-              <aside
-                className={cn(
-                  "hidden lg:block",
-                  mobileOpen &&
-                    "fixed inset-0 z-40 block bg-[#f6f0e4]/95 px-4 pb-6 pt-24 backdrop-blur-sm lg:static lg:bg-transparent lg:px-0 lg:pb-0 lg:pt-0",
-                )}
-              >
-                <div className="rounded-[28px] border border-[#e0d2bc] bg-[#fffdf8] p-4 shadow-[0_24px_60px_-50px_rgba(88,69,29,0.4)] sm:p-5">
+              <aside className="hidden lg:block">
+                <div className="rounded-[28px] border border-[#e0d2bc] bg-[#fffdf8] p-5 shadow-[0_24px_60px_-50px_rgba(88,69,29,0.4)]">
                   <div className="rounded-[26px] bg-gradient-to-br from-[#6c5421] via-[#6f7f35] to-[#94ac3d] p-5 text-[#fcf7eb] shadow-[inset_0_1px_0_rgba(255,255,255,0.15)]">
                     <span className="inline-flex rounded-full border border-white/25 bg-white/8 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-[#f5edd8]">
                       Account
@@ -238,7 +354,7 @@ const DashboardLayout = ({ children }: { children: ReactNode }) => {
                 </div>
               </aside>
 
-              <div className="space-y-5">{children}</div>
+              <div className="min-w-0 space-y-5">{children}</div>
             </div>
           </div>
         </div>
@@ -295,7 +411,7 @@ const DashboardHome = () => {
       label: "Total Spent",
       value: dashboardQuery.isLoading && !isDemo
         ? "..."
-        : formatCurrency(dashboardData?.total_spent ?? 0),
+        : `£${(dashboardData?.total_spent ?? 0)}`,
       description: "Tracked inside your account",
       icon: Wallet,
     },
@@ -346,7 +462,7 @@ const DashboardHome = () => {
       <DashboardPanel>
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#eadcc7] pb-4">
           <div>
-            <h2 className="text-[1.7rem] font-semibold text-[#453526]">
+            <h2 className="text-[1.45rem] font-semibold text-[#453526] sm:text-[1.7rem]">
               Recent Orders
             </h2>
             <p className="mt-1 text-sm text-[#7b6956]">
@@ -358,7 +474,62 @@ const DashboardHome = () => {
           </span>
         </div>
 
-        <div className="mt-5 overflow-x-auto">
+        <div className="mt-5 space-y-3 sm:hidden">
+          {dashboardData?.recent_orders?.length ? (
+            dashboardData.recent_orders.map((order) => (
+              <article
+                key={order.order_id}
+                className="rounded-[20px] border border-[#eadcc7] bg-[#fffdfa] p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium uppercase tracking-[0.14em] text-[#8a7762]">
+                      Order
+                    </p>
+                    <p className="mt-1 truncate text-base font-semibold text-[#4a3a2b]">
+                      {order.order_id}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${getStatusClassName(order.status)}`}
+                  >
+                    {order.status}
+                  </span>
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.12em] text-[#8a7762]">
+                      Date
+                    </p>
+                    <p className="mt-1 text-[#4a3a2b]">{order.date}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.12em] text-[#8a7762]">
+                      Items
+                    </p>
+                    <p className="mt-1 text-[#4a3a2b]">{order.items}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-xs uppercase tracking-[0.12em] text-[#8a7762]">
+                      Total
+                    </p>
+                    <p className="mt-1 text-base font-semibold text-[#4a3a2b]">
+                      {formatGBP(order.total)}
+                    </p>
+                  </div>
+                </div>
+              </article>
+            ))
+          ) : (
+            <div className="rounded-[20px] border border-dashed border-[#dccaad] bg-[#fffdf8] px-4 py-8 text-center text-sm text-[#7a6855]">
+              {dashboardQuery.isLoading
+                ? "Loading recent orders..."
+                : "No orders yet."}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-5 hidden overflow-x-auto sm:block">
           <table className="w-full min-w-[620px] text-sm">
             <thead>
               <tr className="border-b border-[#eadcc7] text-left text-[11px] uppercase tracking-[0.14em] text-[#8a7762]">
@@ -384,7 +555,7 @@ const DashboardHome = () => {
                     <td className="px-4 py-4 text-[#7a6855]">{order.date}</td>
                     <td className="px-4 py-4">{order.items}</td>
                     <td className="px-4 py-4 font-medium">
-                      {formatCurrency(order.total)}
+                      {formatGBP(order.total)}
                     </td>
                     <td className="px-4 py-4">
                       <span

@@ -159,7 +159,7 @@ const DashboardProfile = () => {
 
       {profileQuery.isError ? (
         <div className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <p>
               {profileQuery.error instanceof ApiError
                 ? profileQuery.error.message
@@ -289,7 +289,7 @@ const DashboardProfile = () => {
           <Button
             type="submit"
             disabled={updateMutation.isPending || profileQuery.isLoading}
-            className="mt-5 rounded-2xl bg-[#6b8440] px-6 hover:bg-[#5c7337]"
+            className="mt-5 w-full rounded-2xl bg-[#6b8440] px-6 hover:bg-[#5c7337] sm:w-auto"
           >
             {updateMutation.isPending
               ? "Saving..."

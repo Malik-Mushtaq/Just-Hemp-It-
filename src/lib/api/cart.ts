@@ -411,10 +411,12 @@ const normalizeCheckoutPayload = (payload?: CheckoutPayload) => {
   }
 
   const shippingAddress = payload.shipping_address || {
+    line1: payload.street_address,
     address1: payload.street_address,
     city: payload.city,
     state: payload.state,
     postal_code: payload.postal_code,
+    zip: payload.postal_code,
     country: payload.country,
   };
 

@@ -320,6 +320,18 @@ const Checkout = () => {
                       }
                       required
                     />
+                    <Input
+                      placeholder="Country"
+                      className="rounded-xl h-11"
+                      value={shippingData.country}
+                      onChange={(e) =>
+                        setShippingData({
+                          ...shippingData,
+                          country: e.target.value,
+                        })
+                      }
+                      required
+                    />
                   </div>
                   <Input
                     placeholder="Phone Number"

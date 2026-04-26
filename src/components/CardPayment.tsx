@@ -74,6 +74,11 @@ const getFormValidity = (payload: unknown): boolean => {
   return false;
 };
 
+const normalizeShippingValue = (value: string | undefined) => {
+  const normalized = value?.trim();
+  return normalized ? normalized : undefined;
+};
+
 const loadSdkScript = (): Promise<void> => {
   if (typeof window === "undefined") return Promise.resolve();
   if (window.SecureTrading) return Promise.resolve();
@@ -255,6 +260,32 @@ const CardPayment: React.FC<CardPaymentProps> = ({
         throw new Error("Invalid payment amount");
       }
 
+      const normalizedShippingAddress = shippingData
+        ? {
+            line1: normalizeShippingValue(shippingData.street_address),
+            address1: normalizeShippingValue(shippingData.street_address),
+            city: normalizeShippingValue(shippingData.city),
+            state: normalizeShippingValue(shippingData.state),
+            postal_code: normalizeShippingValue(shippingData.postal_code),
+            zip: normalizeShippingValue(shippingData.postal_code),
+            country: normalizeShippingValue(shippingData.country),
+          }
+        : undefined;
+
+      if (
+        !normalizedShippingAddress?.line1 ||
+        !normalizedShippingAddress.city ||
+        !normalizedShippingAddress.country ||
+        !(
+          normalizedShippingAddress.postal_code ||
+          normalizedShippingAddress.zip
+        )
+      ) {
+        throw new Error(
+          "Shipping address requires street address, city, country, and ZIP/postal code.",
+        );
+      }
+
       // Next frame so form DOM is mounted
       await new Promise<void>((r) => requestAnimationFrame(() => r()));
 
@@ -274,15 +305,7 @@ const CardPayment: React.FC<CardPaymentProps> = ({
           currency,
           payment_method: "card",
           email: shippingData?.email || undefined,
-          shipping_address: shippingData
-            ? {
-                address1: shippingData.street_address,
-                city: shippingData.city,
-                state: shippingData.state,
-                postal_code: shippingData.postal_code,
-                country: shippingData.country,
-              }
-            : undefined,
+          shipping_address: normalizedShippingAddress,
         }),
       });
 

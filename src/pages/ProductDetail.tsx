@@ -458,9 +458,26 @@ const ProductDetail = () => {
   ) => {
     setVariationQuantities((current) => {
       const variationKey = String(variationId);
+      const variation = productVariations.find(
+        (entry) => String(entry.variation_id) === variationKey,
+      );
+      const minimumOrderQuantity =
+        pricingAudience === "wholesaler" && variation
+          ? getMinimumOrderQuantity(variation)
+          : 1;
+      const currentQuantity = current[variationKey] ?? 0;
       const boundedByStock =
         stockLimit !== null ? Math.min(nextQuantity, stockLimit) : nextQuantity;
-      const normalized = Math.max(0, Math.min(999, Math.trunc(boundedByStock)));
+      let normalized = Math.max(0, Math.min(999, Math.trunc(boundedByStock)));
+
+      if (
+        pricingAudience === "wholesaler" &&
+        currentQuantity <= 0 &&
+        normalized > 0 &&
+        minimumOrderQuantity > 1
+      ) {
+        normalized = Math.max(normalized, minimumOrderQuantity);
+      }
 
       if (normalized <= 0) {
         if (!(variationKey in current)) {
@@ -485,7 +502,13 @@ const ProductDetail = () => {
   const handleAddToCart = () => {
     if (!productVariations.length) {
       if (selectedVariationIdValue) {
-        addItem(product.id, selectedVariationIdValue, 1);
+        addItem(
+          product.id,
+          selectedVariationIdValue,
+          pricingAudience === "wholesaler"
+            ? selectedVariationMinimumOrderQuantity
+            : 1,
+        );
       }
       return;
     }

@@ -99,6 +99,10 @@ const DashboardPassword = () => {
 
       <DashboardPanel className="max-w-4xl">
         <form onSubmit={onSubmit} className="space-y-5">
+          <div className="rounded-[18px] border border-[#eadcc7] bg-[#faf5eb] px-4 py-3 text-sm leading-6 text-[#7a6856] sm:hidden">
+            Keep your password unique and avoid reusing one from another account.
+          </div>
+
           <div>
             <label className={labelClassName}>Current Password</label>
             <div className="relative">
