@@ -62,6 +62,8 @@ const getProductPath = (product: {
 
 const formatPrice = (price: number) => formatGBP(price);
 
+const formatRatingValue = (rating: number) => rating.toFixed(1);
+
 const isActiveProduct = (status: string | boolean | undefined) => {
   if (typeof status === "boolean") {
     return status;
@@ -434,7 +436,7 @@ const Products = () => {
                     {productsQuery.isLoading && !products.length
                       ? "Loading products..."
                       : isSearchMode
-                        ? `${totalProducts} results for \"${searchQuery}\"`
+                        ? `${totalProducts} results for "${searchQuery}"`
                         : `${totalProducts} products${selectedCategoryName ? ` in ${selectedCategoryName}` : ""}`}
                   </p>
                   {productsQuery.isFetching && products.length ? (
@@ -471,6 +473,14 @@ const Products = () => {
                     const productRating = Math.max(
                       0,
                       Math.min(5, Math.round(product.avg_rating || 0)),
+                    );
+                    const productRatingValue = Math.max(
+                      0,
+                      Math.min(5, Number(product.avg_rating || 0)),
+                    );
+                    const productReviewCount = Math.max(
+                      0,
+                      Math.trunc(Number(product.review_count || 0)),
                     );
                     const minimumOrderQuantity =
                       getProductMinimumOrderQuantity(product);
@@ -519,7 +529,7 @@ const Products = () => {
                                 `${variationCount} variation${variationCount > 1 ? "s" : ""}`}
                             </p>
                           ) : null}
-                          <div className="flex items-center gap-0.5">
+                          <div className="flex items-center gap-1.5">
                             {[...Array(5)].map((_, starIndex) => (
                               <Star
                                 key={starIndex}
@@ -530,6 +540,12 @@ const Products = () => {
                                 }`}
                               />
                             ))}
+                            <span className="text-[10px] text-muted-foreground">
+                              {formatRatingValue(productRatingValue)}
+                              {productReviewCount > 0
+                                ? ` (${productReviewCount})`
+                                : ""}
+                            </span>
                           </div>
                           {minimumOrderQuantity > 1 ? (
                             <p className="text-[10px] font-medium text-primary">

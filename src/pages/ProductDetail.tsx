@@ -79,6 +79,7 @@ const toSlug = (name: string) =>
     .replace(/[^a-z0-9-]/g, "");
 
 const parseAmount = (value: unknown) => parseFloat(String(value ?? 0)) || 0;
+const formatRatingValue = (value: number) => parseAmount(value).toFixed(1);
 
 const getVariationStockCount = (stockValue: unknown) =>
   Math.max(0, Math.floor(parseAmount(stockValue)));
@@ -567,7 +568,10 @@ const ProductDetail = () => {
 
   const mainImage = galleryImages[selectedImage] || "";
   const reviewItems = reviewsQuery.data?.reviews || [];
-  const reviewCount = reviewsQuery.data?.total_reviews || 0;
+  const reviewCount = Math.max(
+    0,
+    reviewsQuery.data?.total_reviews ?? product.review_count ?? 0,
+  );
   const reviewsTotalPages = Math.max(reviewsQuery.data?.total_pages || 1, 1);
 
   return (
@@ -665,7 +669,8 @@ const ProductDetail = () => {
                     ))}
                   </div>
                   <span className="text-xs sm:text-sm text-muted-foreground">
-                    ({reviewCount} reviews)
+                    {formatRatingValue(product.avg_rating)} ({reviewCount} review
+                    {reviewCount === 1 ? "" : "s"})
                   </span>
                 </div>
 

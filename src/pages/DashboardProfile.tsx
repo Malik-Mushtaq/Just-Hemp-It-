@@ -215,15 +215,6 @@ const DashboardProfile = () => {
               />
             </div>
             <div>
-              <label className={labelClassName}>Email</label>
-              <Input
-                type="email"
-                value={profileUser?.email || ""}
-                disabled
-                className={`${fieldClassName} bg-[#f5f0e5] text-[#71614d]`}
-              />
-            </div>
-            <div>
               <label className={labelClassName}>Phone</label>
               <Input
                 placeholder="+1 555-123-4567"

@@ -47,6 +47,7 @@ export interface ProductItem {
   main_img?: string | null;
   support_imgs?: string[];
   avg_rating: number;
+  review_count?: number;
   main_variation_name?: string | null;
   variations: ProductVariation[];
   reviews?: ProductReview[];
@@ -122,6 +123,9 @@ type ProductApi = {
   compare_at_price?: number | null;
   discounted_price?: number | null;
   discount_percentage?: number | null;
+  average_rating?: number | null;
+  avg_rating?: number | null;
+  review_count?: number | null;
   min_order_qty_retail?: number | null;
   min_order_qty_wholesale?: number | null;
   min_order_value_wholesale?: number | null;
@@ -246,7 +250,8 @@ const normalizeProduct = (product: ProductApi, index: number): ProductItem => {
     status: product.status || "active",
     main_img: product.image || product.main_image_url || null,
     support_imgs: product.support_images || [],
-    avg_rating: 0,
+    avg_rating: parseAmount(product.average_rating ?? product.avg_rating),
+    review_count: Math.max(0, Math.trunc(parseAmount(product.review_count))),
     main_variation_name: primaryVariation?.variation_name || null,
     variations,
     reviews: [],
